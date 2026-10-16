@@ -1,0 +1,21 @@
+(()=>{'use strict';
+const $=id=>document.getElementById(id),state={base:localStorage.getItem('hidra.base')||'',token:localStorage.getItem('hidra.token')||'',audio:null,busy:false};
+$('endpoint').value=state.base;$('token').value=state.token;
+function base(){return(state.base||location.origin).replace(/\/$/,'')}
+function sayStatus(s,ok){$('connection').textContent=s;$('connection').classList.toggle('ok',!!ok);$('hint').textContent=s==='CONECTADA'?'Pronta para conversar':s}
+function tab(name){document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===name));document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.tab===name))}
+document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>tab(b.dataset.tab)));
+function bubble(t,who){const el=document.createElement('div');el.className='bubble '+who;el.textContent=t;$('history').appendChild(el);$('history').scrollTop=$('history').scrollHeight;tab('conversation')}
+async function api(path,opt={}){const res=await fetch(base()+'/mobile/api/'+path,{...opt,headers:{'Authorization':'Bearer '+state.token,'Content-Type':'application/json',...(opt.headers||{})}});if(!res.ok){let err='Erro '+res.status;try{err=(await res.json()).error||err}catch(e){}throw Error(err)}return res}
+async function ping(){if(!state.token){sayStatus('CONFIGURE O ACESSO');return}try{await api('health');sayStatus('CONECTADA',true)}catch(e){sayStatus('SEM CONEXÃO')}}
+async function speak(text){try{const res=await api('tts',{method:'POST',body:JSON.stringify({text})});const blob=await res.blob();if(state.audio){state.audio.pause();if(state.audio._url)URL.revokeObjectURL(state.audio._url)}const url=URL.createObjectURL(blob);const audio=new Audio(url);audio._url=url;state.audio=audio;audio.onended=()=>URL.revokeObjectURL(url);await audio.play()}catch(e){$('hint').textContent='Resposta em texto; áudio indisponível: '+e.message}}
+async function send(text){text=String(text||'').trim();if(!text||state.busy)return;if(window.HidraGPS&&window.HidraGPS.handle(text)){bubble(text,'me');return;}if(!state.token){$('settings').hidden=false;return}state.busy=true;bubble(text,'me');$('hint').textContent='Aguardando resposta do computador...';try{const res=await api('message',{method:'POST',body:JSON.stringify({text})});const {id}=await res.json();let done=false;for(let i=0;i<35;i++){await new Promise(r=>setTimeout(r,1100));const result=await(await api('result/'+encodeURIComponent(id))).json();if(result.status==='done'){done=true;bubble(result.text||'Comando concluído.','hidra');$('hint').textContent='Pronta para conversar';if(result.text)await speak(result.text);break}if(result.status==='error')throw Error(result.error||'Falha no processamento')}if(!done)throw Error('Sem resposta do desktop. Abra a HIDRA no Construct 2 e tente novamente.')}catch(e){bubble('Não consegui completar: '+e.message,'hidra');$('hint').textContent='Falha de comunicação'}finally{state.busy=false}}
+$('sendform').onsubmit=e=>{e.preventDefault();const t=$('message').value;$('message').value='';send(t)};
+document.querySelectorAll('[data-command]').forEach(b=>b.addEventListener('click',()=>send(b.dataset.command)));
+$('settingsTile').onclick=()=>{$('settings').hidden=false};
+$('closeSettings').onclick=()=>{$('settings').hidden=true};
+$('save').onclick=()=>{state.base=$('endpoint').value.trim().replace(/\/$/,'');state.token=$('token').value.trim();localStorage.setItem('hidra.base',state.base);localStorage.setItem('hidra.token',state.token);$('settings').hidden=true;ping()};
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+$('talk').onclick=()=>{if(!SR){$('hint').textContent='Reconhecimento de voz indisponível neste navegador. Use o campo de texto.';return}const r=new SR();r.lang='pt-BR';r.interimResults=false;r.maxAlternatives=1;$('talk').classList.add('listening');$('talk').textContent='🎙 OUVINDO...';r.onresult=e=>{const t=e.results[0][0].transcript;$('message').value=t;send(t)};r.onerror=e=>{$('hint').textContent='Microfone: '+e.error};r.onend=()=>{$('talk').classList.remove('listening');$('talk').textContent='🎙 ATIVAR MICROFONE'};try{r.start()}catch(e){$('hint').textContent='Não foi possível abrir o microfone'}};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});ping();
+})();

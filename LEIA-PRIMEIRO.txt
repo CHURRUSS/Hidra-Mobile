@@ -1,0 +1,16 @@
+HIDRA MOBILE — REPOSITÓRIO LIMPO
+
+1. Crie um repositório público novo no GitHub.
+2. Extraia este ZIP e envie OS ARQUIVOS DE DENTRO à raiz do repositório (não envie o ZIP como único arquivo).
+3. Em Settings > Pages, selecione Deploy from a branch, main, /(root).
+4. Aguarde a publicação e abra a URL fornecida pelo GitHub Pages.
+5. Em Ajustes da HIDRA Mobile, configure novamente o endereço HTTPS do servidor e a chave de pareamento. NÃO publique essa chave no GitHub.
+
+Incluído: interface, estilos, núcleo neural, GPS, lembretes, imagens usadas pela versão mobile, manifest e service worker.
+Não incluído: servidor Python, bancos SQLite, tokens privados, scripts antigos de atualização ou projetos de APK.
+
+IMPORTANTE:
+- O novo domínio/caminho do GitHub Pages terá armazenamento local diferente. Lembretes que ainda estiverem SOMENTE no navegador do endereço antigo não serão transferidos automaticamente. Sincronize-os com o Desktop ANTES de abandonar a página antiga, ou mantenha a página antiga até confirmar a migração.
+- Para a sincronização com o PC fora de casa, é necessário acesso HTTPS seguro ao servidor. O servidor ligado sozinho não basta.
+- Notificações de lembretes com o app fechado ainda não foram implementadas.
+- O botão LEMBRETES foi integrado à seção de módulos, antes de AJUSTES.

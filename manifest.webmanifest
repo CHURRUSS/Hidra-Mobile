@@ -1,0 +1,1 @@
+{"name": "HIDRA Mobile 2.2", "short_name": "HIDRA", "lang": "pt-BR", "start_url": "./", "scope": "./", "display": "standalone", "background_color": "#061522", "theme_color": "#061522", "icons": [{"src": "logo-desktop.png", "sizes": "64x64", "type": "image/png", "purpose": "any"}]}
