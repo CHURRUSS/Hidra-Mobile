@@ -1,0 +1,13 @@
+HIDRA Vision 1.0 — instalação sem alterar os módulos existentes
+
+1. Envie vision.js para a raiz do repositório Hidra-Mobile.
+2. Em index.html, dentro de <div class="modules">, acrescente este botão junto aos outros módulos:
+<button class="module" id="visionTile" type="button"><span class="symbol">◉</span><span>Visão</span></button>
+3. Antes de </body>, depois dos scripts existentes, acrescente:
+<script src="vision.js?v=1" defer></script>
+4. Opcional: troque "08 DISPONÍVEIS" por "09 DISPONÍVEIS".
+
+O módulo abre a câmera no próprio app, captura foto e exibe prévia.
+Para analisar de verdade, o servidor Python precisa implementar POST /mobile/api/vision, aceitando multipart/form-data com image e question, autenticado com Bearer token, e retornando JSON {"description":"..."}.
+O arquivo NÃO envia fotos a serviços externos automaticamente; só envia ao servidor configurado ao tocar em Analisar.
+A análise NÃO funcionará até existir a rota no servidor.
