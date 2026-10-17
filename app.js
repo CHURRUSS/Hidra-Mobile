@@ -75,6 +75,7 @@ async function remoteDesktop(text){const health=await(await api('desktop/status'
 }
 async function send(input){const text=String(input||'').trim();if(!text||state.busy)return;state.busy=true;let handled=false;
  try{bubble(text,'me');if(window.HidraGPS&&window.HidraGPS.handle(text)){handled=true;return}
+  if(newsIntent(text)&&window.HidraNews){window.HidraNews.open(newsTopic(text));handled=true;return}
   let response=control(text);if(response!==null){bubble(response,'hidra');await speak(response);handled=true;return}
   if(localIntent(text)){response=localAnswer(text);bubble(response,'hidra');await speak(response);handled=true;return}
   if(state.privacy||state.localOnly||!state.token||!navigator.onLine){response='Este pedido precisa do servidor. O núcleo local continua funcionando para comandos offline.';bubble(response,'hidra');await speak(response);handled=true;return}
@@ -92,6 +93,7 @@ $('settingsTile').onclick=()=>{$('settings').hidden=false};$('closeSettings').on
 $('save').onclick=()=>{state.base=$('endpoint').value.trim().replace(/\/$/,'');state.token=$('token').value.trim();localStorage.setItem('hidra.base',state.base);localStorage.setItem('hidra.token',state.token);$('settings').hidden=true;ping()};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 $('talk').onclick=()=>{if(!SR){$('hint').textContent='Reconhecimento de voz indisponível neste navegador. Use o campo de texto.';return}const r=new SR();r.lang='pt-BR';r.interimResults=false;r.maxAlternatives=1;$('talk').classList.add('listening');$('talk').textContent='🎙 OUVINDO...';r.onresult=e=>{const t=e.results[0][0].transcript;$('message').value=t;send(t)};r.onerror=e=>{$('hint').textContent='Microfone: '+e.error};r.onend=()=>{$('talk').classList.remove('listening');$('talk').textContent='🎙 ATIVAR MICROFONE'};try{r.start()}catch(e){$('hint').textContent='Não foi possível abrir o microfone'}};
+const newsScript=document.createElement('script');newsScript.src='./news.js?v=13';newsScript.defer=true;document.head.appendChild(newsScript);
 // Motor 1.2 extraído do CAPX, carregado como script local. O Service Worker o guarda para uso offline.
 const core=document.createElement('script');core.src='./hidra-intelligence.js?v=12';core.async=false;core.onerror=()=>{$('hint').textContent='Falha ao carregar motor local. Conecte uma vez e recarregue.'};document.head.appendChild(core);
 // Ferramentas de desenvolvimento, em um painel que não altera o layout original do PWA.
