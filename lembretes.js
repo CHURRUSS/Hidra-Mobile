@@ -3,6 +3,7 @@ const KEY='hidra.reminders.v1', $=id=>document.getElementById(id);
 let items=[];try{items=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(items))items=[]}catch(e){items=[]}
 const save=()=>localStorage.setItem(KEY,JSON.stringify(items));
 const stamp=()=>new Date().toISOString();
+const utcDue=x=>{const d=new Date(x.due_at);return isNaN(d.getTime())?null:d.toISOString()};
 const uid=()=>('r'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))).replace(/[^a-zA-Z0-9_-]/g,'');
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const css=document.createElement('style');css.textContent=`#hidraRemPanel{position:fixed;inset:0;z-index:9998;background:#03101ded;color:#d9faff;padding:20px;overflow:auto;font:15px Arial,sans-serif}#hidraRemPanel[hidden]{display:none}#hidraRemPanel .remwrap{max-width:540px;margin:10px auto;background:#082336;border:1px solid #2e93aa;border-radius:16px;padding:20px}#hidraRemPanel input,#hidraRemPanel button{box-sizing:border-box;padding:11px;border-radius:9px;margin:5px 0}#hidraRemPanel input{width:100%;background:#102e40;border:1px solid #417f94;color:white}#hidraRemPanel button{background:#12475b;border:1px solid #47aacc;color:#d9faff;cursor:pointer}#hidraRemPanel .remrow{border-top:1px solid #2d596b;padding:10px 0}#hidraRemPanel .remrow button{margin-right:8px}#hidraRemPanel .remmuted{opacity:.65}`;document.head.appendChild(css);
