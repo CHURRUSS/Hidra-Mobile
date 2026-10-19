@@ -3,7 +3,19 @@
 import datetime as dt, html, json, pathlib, re, urllib.parse, urllib.request, xml.etree.ElementTree as ET
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 OUT=ROOT/'data'/'noticias.json'
-TOPICS={'brasil':'Brasil','tecnologia':'tecnologia','mundo':'mundo','economia':'economia','esportes':'esportes'}
+TOPICS={
+ 'brasil':'Brasil',
+ 'tecnologia':'tecnologia',
+ 'mundo':'mundo',
+ 'economia':'economia',
+ 'esportes':'esportes',
+ 'games':'videogames OR "video game" OR "jogos eletrônicos" OR PlayStation OR Xbox OR Nintendo',
+ 'ciencia':'ciência pesquisas descobertas',
+ 'saude':'saúde medicina',
+ 'entretenimento':'cinema OR séries OR música',
+ 'politica':'política brasileira',
+ 'ia':'"inteligência artificial" OR OpenAI OR ChatGPT',
+}
 def get(url):
  req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 (compatible; HIDRA-News/1.0)','Accept':'application/rss+xml,application/xml,text/xml,*/*'})
  with urllib.request.urlopen(req,timeout=22) as r:return r.read(2_000_000)
