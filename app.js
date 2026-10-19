@@ -77,6 +77,17 @@ async function remoteDesktop(text){const health=await(await api('desktop/status'
 async function send(input){const text=String(input||'').trim();if(!text||state.busy)return;state.busy=true;let handled=false;
  try{bubble(text,'me');if(window.HidraGPS&&window.HidraGPS.handle(text)){handled=true;return}
   let response=control(text);if(response!==null){bubble(response,'hidra');await speak(response);handled=true;return}
+  if(/^(?:bom dia|boa tarde|boa noite)(?:[!., ]*)$/.test(plain(text))){
+   const today=new Date().toLocaleDateString('en-CA');const key='hidra.mobile.dailyGreeting.v1';
+   if(localStorage.getItem(key)!==today){
+    const now=new Date();const greeting=now.getHours()<12?'Bom dia':now.getHours()<18?'Boa tarde':'Boa noite';
+    const day=now.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    response=greeting+', senhor! Hoje é '+day+'.';
+    if(!state.privacy){const city=window.HIDRAMobilePublic?.getWeatherCity?.();if(city){try{const w=await window.HIDRAMobilePublic.weather(city);response+='\n'+(w.stale?'Último clima salvo: ':'Clima agora em ')+w.city+': '+Math.round(w.temp)+' °C, '+w.description+'.'}catch(e){response+='\nNão consegui consultar o clima neste momento.'}}}
+    response+='\nEstou à disposição.';
+    bubble(response,'hidra');localStorage.setItem(key,today);await speak(response);handled=true;return;
+   }
+  }
   if(localIntent(text)){response=localAnswer(text);bubble(response,'hidra');await speak(response);handled=true;return}
   if(newsIntent(text)){
    if(state.privacy){response='Modo privacidade ativado: não consultarei fontes externas.'}

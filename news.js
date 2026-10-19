@@ -48,7 +48,7 @@ async function load(topic){
  try{
  const data=await window.HIDRAMobilePublic.news(topic),items=data.items;
  if(!items.length){state.textContent='Nenhuma notícia encontrada sobre '+topic+'.';return}
- state.textContent=(data.stale?'Notícias salvas em '+new Date(data.updated).toLocaleString('pt-BR')+' (sem atualização): ':items.length+' notícia(s) encontrada(s) — ')+(data.provider==='bing'?'Bing Notícias':'Google Notícias')+'.';
+ state.textContent=(data.stale?'Notícias salvas em '+new Date(data.updated).toLocaleString('pt-BR')+' (sem atualização): ':items.length+' notícia(s) encontrada(s) — ')+(data.provider==='gdelt'?'GDELT':data.provider==='bing'?'Bing Notícias':'Google Notícias')+'.';
  items.slice(0,30).forEach(item=>{
  const article=document.createElement('article'),a=document.createElement('a');
  const url=validUrl(item.url||item.link);
