@@ -31,7 +31,7 @@ panel.innerHTML=`<div class="hlbox"><div class="hlrow hlhead"><strong>HIDRA / BI
 <div class="hlstatus" id="hlStatus" aria-live="polite"></div>
 <div class="hlfiles" id="hlFiles"></div><div id="hlOutput" class="hltext" hidden></div></div>`;
 document.body.appendChild(panel);
-let items=[],selected=null,busy=false,timer=null,pendingFile=null,lastFile=null;
+let items=[],selected=null,busy=false,timer=null,pendingFile=null,pendingBytes=null,pendingLoading=false,pickEpoch=0,lastFile=null;
 function status(t){$('hlStatus').textContent=t}
 function config(){const url=(localStorage.getItem('hidra.base')||'').trim().replace(/\/$/,'');const token=(localStorage.getItem('hidra.token')||'').trim();if(!url||!token)throw Error('Configure o endereço HTTPS e a chave em Ajustes para usar a Biblioteca do PC.');if(!/^https:\/\//i.test(url)&&!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url))throw Error('Para conexão remota use HTTPS nos Ajustes.');return {url,token}}
 async function req(path,data){const cfg=config();const ctrl=new AbortController(),timeout=setTimeout(()=>ctrl.abort(),150000);
@@ -83,8 +83,33 @@ if(form && !document.getElementById('hlComposerAttach')){
  const name=document.createElement('span');const remove=document.createElement('button');remove.type='button';remove.textContent='✕';remove.setAttribute('aria-label','Remover anexo');
  chip.append(name,remove);form.parentElement.insertBefore(chip,form);
  function renderPending(){chip.hidden=!pendingFile;if(pendingFile)name.textContent='📎 '+pendingFile.name}
- remove.onclick=()=>{pendingFile=null;picker.value='';renderPending()};
- picker.onchange=()=>{const file=picker.files[0];if(!file)return;if(file.size>8*1024*1024){alert('O arquivo deve ter até 8 MB.');picker.value='';return}pendingFile=file;renderPending()};
+ remove.onclick=()=>{pickEpoch++;pendingFile=null;pendingBytes=null;pendingLoading=false;picker.value='';renderPending();progress('Anexo removido.');};
+ // No Android, o provedor de arquivos pode invalidar a referencia depois que o seletor fecha.
+ // Fazemos a leitura AGORA e guardamos apenas os bytes na memoria, antes do clique em Enviar.
+ picker.onchange=async()=>{
+   const file=picker.files[0];if(!file)return;
+   const ticket=++pickEpoch;
+   pendingFile=null;pendingBytes=null;pendingLoading=true;renderPending();
+   if(file.size>8*1024*1024){pendingLoading=false;picker.value='';progress('Arquivo maior que 8 MB. Escolha um arquivo menor.',true);return;}
+   progress('Lendo o arquivo '+file.name+' no celular...');
+   try{
+     const bytes=new Uint8Array(await file.arrayBuffer());
+     if(ticket!==pickEpoch)return;
+     if(!bytes.length)throw Error('O arquivo está vazio.');
+     pendingFile={name:file.name,size:file.size};
+     pendingBytes=bytes;
+     picker.value=''; // os bytes ja estao em memoria; nao precisamos mais do acesso ao arquivo original
+     renderPending();
+     progress('Anexo pronto para enviar: '+file.name+'.');
+   }catch(err){
+     if(ticket!==pickEpoch)return;
+     pendingFile=null;pendingBytes=null;picker.value='';renderPending();
+     const cause=err?.name==='NotFoundError'?'O Android não conseguiu localizar os dados do arquivo selecionado.':(err?.message||'Falha de leitura.');
+     const help='Abra o app Arquivos, procure na pasta Downloads e selecione o arquivo salvo no armazenamento interno. Se estiver em Recentes, Drive ou outro app, salve uma cópia em Downloads primeiro.';
+     progress('Falha ao ler '+file.name+': '+cause+' '+help,true);
+     status('Falha ao ler o anexo no celular: '+cause);
+   }finally{if(ticket===pickEpoch)pendingLoading=false;}
+ };
  // Mostra o andamento ao lado do campo de mensagem; nao esconde falhas na Biblioteca.
  const transferStatus=document.createElement('div');
  transferStatus.id='hlChatTransferStatus';transferStatus.hidden=true;
@@ -117,30 +142,35 @@ if(form && !document.getElementById('hlComposerAttach')){
    const followup=!pendingFile&&!!lastFile&&
      /(?:\barquivo\b|\bc[oó]digo\b|\bvers[aã]o\b|\bfun[cç][aã]o\b)/i.test(instruction)&&
      /(?:corrig|corrij|consert|modifi|alter|edit|reescrev|melhor|ajust|refator|devolv|analis|analise|verifi|mostr|explic)/i.test(instruction);
-   if(!pendingFile&&!followup)return;
+   if(!pendingFile&&!followup&&!pendingLoading)return;
    e.preventDefault();e.stopImmediatePropagation();
+   if(pendingLoading){progress('Aguarde a leitura do anexo terminar antes de enviar.');return;}
    if(busy){progress('Aguarde: ainda estou processando o arquivo anterior.');return}
    if(!instruction){progress('Escreva o que a HIDRA deve fazer com o arquivo.',true);return}
    const selectedFile=pendingFile;
+   const selectedBytes=pendingBytes;
    const filename=selectedFile?selectedFile.name:lastFile.name;
    const wantsEdit=/(?:corrig|corrij|consert|modifi|alter|edit|reescrev|melhor|ajust|refator|devolv|gere|crie|atualiz)/i.test(instruction);
    const operation=wantsEdit?'edit':'analyze';
    (async()=>{
      lock(true);
+     let phase='conexao';
      try{
        config(); // verificar HTTPS e pareamento antes de registrar a solicitacao
        chatMessage('📎 '+filename+'\n'+instruction,'me');
        let info=lastFile;
        if(selectedFile){
+         if(!selectedBytes?.length)throw Error('Anexo não carregado. Selecione o arquivo novamente.');
+         phase='envio';
          progress('Enviando '+filename+' para a Biblioteca da HIDRA...');
-         const bytes=new Uint8Array(await selectedFile.arrayBuffer());
-         const uploaded=await(await req('upload',{name:selectedFile.name,data:b64(bytes)})).json();
+         const uploaded=await(await req('upload',{name:selectedFile.name,data:b64(selectedBytes)})).json();
          info=uploaded.file;
          if(!info?.id)throw Error('O servidor não confirmou o recebimento do arquivo.');
          lastFile=info;
-         pendingFile=null;picker.value='';renderPending();
+         pendingFile=null;pendingBytes=null;picker.value='';renderPending();
        }
        if(!info?.id)throw Error('O servidor não retornou o identificador do arquivo.');
+       phase=operation==='edit'?'correcao':'analise';
        progress(operation==='edit'?'Arquivo recebido. A HIDRA está corrigindo o código...':'Arquivo recebido. A HIDRA está analisando...');
        const result=await(await req(operation,{id:info.id,instruction})).json();
        if(operation==='edit'){
@@ -173,9 +203,10 @@ if(form && !document.getElementById('hlComposerAttach')){
        message.value='';
      }catch(err){
        const reason=reportError(err,operation);
-       progress('Falha ao processar '+filename+': '+reason,true);
-       status('Falha no envio pelo chat: '+reason);
-       chatMessage('HIDRA · Não consegui processar '+filename+'.\nMotivo: '+reason,'hidra');
+       const step={conexao:'conexão com o servidor',envio:'envio do arquivo',correcao:'correção pelo servidor',analise:'análise pelo servidor'}[phase]||'processamento';
+       progress('Falha na etapa '+step+' ('+filename+'): '+reason,true);
+       status('Falha na etapa '+step+': '+reason);
+       chatMessage('HIDRA · Não consegui processar '+filename+'.\nEtapa: '+step+'.\nMotivo: '+reason,'hidra');
        // Não limpa o campo de texto no erro: o usuario pode corrigir e tentar novamente.
      }finally{lock(false)}
    })();
