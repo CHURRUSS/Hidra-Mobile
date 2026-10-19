@@ -16,7 +16,7 @@ css.textContent=`
 `;
 document.head.appendChild(css);
 const screen=document.createElement('section');screen.id='hidraNewsScreen';screen.className='screen';
-screen.innerHTML='<div class="news-head"><h2>▤ NOTÍCIAS</h2><button id="hidraNewsClose" type="button">Fechar ✕</button></div><form id="hidraNewsForm" class="news-actions"><input id="hidraNewsQuery" aria-label="Assunto das notícias" placeholder="Assunto (ex.: Brasil)" maxlength="100" value="Brasil"><button type="submit">Buscar</button></form><p id="hidraNewsState" class="news-state" role="status">Consulte notícias pelo servidor HIDRA.</p><div id="hidraNewsList"></div>';
+screen.innerHTML='<div class="news-head"><h2>▤ NOTÍCIAS</h2><button id="hidraNewsClose" type="button">Fechar ✕</button></div><form id="hidraNewsForm" class="news-actions"><input id="hidraNewsQuery" aria-label="Assunto das notícias" placeholder="Assunto (ex.: Brasil)" maxlength="100" value="Brasil"><button type="submit">Buscar</button></form><p id="hidraNewsState" class="news-state" role="status">Consulte notícias pela internet, mesmo sem o servidor HIDRA.</p><div id="hidraNewsList"></div>';
 const main=document.querySelector('main.app')||document.querySelector('main')||document.body;
 const conversation=$('conversation');
 if(conversation)conversation.after(screen);else main.appendChild(screen);
@@ -45,18 +45,10 @@ function validUrl(value){
 async function load(topic){
  const state=$('hidraNewsState'),list=$('hidraNewsList');
  state.textContent='Buscando notícias sobre '+topic+'…';list.replaceChildren();
- const base=(localStorage.getItem('hidra.base')||'').replace(/\/$/,'');
- const token=localStorage.getItem('hidra.token')||'';
- if(!base||!token){state.textContent='Configure o endereço do servidor e a chave em Ajustes para consultar notícias.';return}
  try{
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),18000);
- let res;
- try{res=await fetch(base+'/mobile/api/news?q='+encodeURIComponent(topic),{headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:ctl.signal})}
- finally{clearTimeout(timer)}
- if(!res.ok)throw Error('Servidor respondeu HTTP '+res.status);
- const data=await res.json(),items=Array.isArray(data.items)?data.items:[];
+ const data=await window.HIDRAMobilePublic.news(topic),items=data.items;
  if(!items.length){state.textContent='Nenhuma notícia encontrada sobre '+topic+'.';return}
- state.textContent=items.length+' notícia(s) encontrada(s).';
+ state.textContent=(data.stale?'Notícias salvas em '+new Date(data.updated).toLocaleString('pt-BR')+' (sem atualização): ':items.length+' notícia(s) encontrada(s) — ')+(data.provider==='bing'?'Bing Notícias':'Google Notícias')+'.';
  items.slice(0,30).forEach(item=>{
  const article=document.createElement('article'),a=document.createElement('a');
  const url=validUrl(item.url||item.link);
@@ -68,7 +60,7 @@ async function load(topic){
  if(item.description||item.summary){const p=document.createElement('p');p.textContent=String(item.description||item.summary);article.appendChild(p)}
  list.appendChild(article);
  });
- }catch(e){state.textContent='Não foi possível consultar notícias: '+(e.name==='AbortError'?'tempo limite':e.message)+'. Verifique o servidor.'}
+ }catch(e){state.textContent='Não foi possível consultar notícias: '+(e.name==='AbortError'?'tempo limite':e.message)+'. Verifique sua conexão ou a disponibilidade do serviço RSS.'}
 }
 $('hidraNewsClose').onclick=close;
 $('hidraNewsForm').onsubmit=e=>{e.preventDefault();load($('hidraNewsQuery').value.trim()||'Brasil')};

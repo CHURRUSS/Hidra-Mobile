@@ -66,6 +66,7 @@ function control(raw){const s=plain(raw);
 }
 function newsIntent(raw){const s=plain(raw);return /^(?:noticias|ultimas noticias|noticias sobre .+|noticias de hoje|quais as noticias de hoje|mostre as noticias|me mostre as ultimas noticias|abra noticias|pesquise noticias sobre .+|quero ver noticias sobre .+)$/.test(s)}
 function newsTopic(raw){const s=plain(raw),m=s.match(/(?:sobre|noticias de)\s+(.+)$/);return m?m[1]:'Brasil'}
+function weatherIntent(raw){return /^(?:clima|tempo hoje|como esta o tempo|como esta o clima|qual a temperatura|previsao do tempo|previsao do clima)(?:\s|$)/.test(plain(raw))}
 function desktopIntent(raw){const s=plain(raw);
  return /(?:laboratorio cientifico|laboratorio atomico|orbital|simule o sistema solar|janela de noticias|mostre o estado do sistema|estado do computador|desempenho do pc|abra o painel|controle a janela)/.test(s);
 }
@@ -75,13 +76,22 @@ async function remoteDesktop(text){const health=await(await api('desktop/status'
 }
 async function send(input){const text=String(input||'').trim();if(!text||state.busy)return;state.busy=true;let handled=false;
  try{bubble(text,'me');if(window.HidraGPS&&window.HidraGPS.handle(text)){handled=true;return}
-  if(newsIntent(text)&&window.HidraNews){window.HidraNews.open(newsTopic(text));handled=true;return}
   let response=control(text);if(response!==null){bubble(response,'hidra');await speak(response);handled=true;return}
   if(localIntent(text)){response=localAnswer(text);bubble(response,'hidra');await speak(response);handled=true;return}
+  if(newsIntent(text)){
+   if(state.privacy){response='Modo privacidade ativado: não consultarei fontes externas.'}
+   else{const result=await window.HIDRAMobilePublic.news(newsTopic(text));response=(result.stale?'Últimas notícias salvas (não atualizadas):\n':'Notícias sobre '+result.topic+':\n')+result.items.map((item,i)=>(i+1)+'. '+item.title+' — '+item.source).join('\n')}
+   bubble(response,'hidra');await speak(response);handled=true;return;
+  }
+  if(weatherIntent(text)){
+   if(state.privacy)response='Modo privacidade ativado: não consultarei serviços externos.';
+   else{let city=window.HIDRAMobilePublic.getWeatherCity();if(!city){city=prompt('Qual cidade deseja usar para o clima? Ex.: São Paulo, SP','')||'';if(!city.trim()){bubble('Configure uma cidade para consultar o clima.','hidra');handled=true;return}}
+    const w=await window.HIDRAMobilePublic.weather(city);response=(w.stale?'Último clima salvo (não atualizado): ':'Clima atual: ')+w.city+', '+Math.round(w.temp)+'°C, '+w.description+'.'}
+   bubble(response,'hidra');await speak(response);handled=true;return;
+  }
   if(state.privacy||state.localOnly||!state.token||!navigator.onLine){response='Este pedido precisa do servidor. O núcleo local continua funcionando para comandos offline.';bubble(response,'hidra');await speak(response);handled=true;return}
-  $('hint').textContent=desktopIntent(text)?'Consultando o Desktop…':(newsIntent(text)?'Buscando notícias pelo servidor…':'Conversando com o núcleo de IA…');
-  if(newsIntent(text)){const res=await api('news?q='+encodeURIComponent(newsTopic(text)));const news=await res.json();response=(news.items||[]).slice(0,5).map((item,i)=>(i+1)+'. '+item.title+' — '+item.source).join('\n')||'Nenhuma notícia encontrada.'}
-  else if(desktopIntent(text))response=await remoteDesktop(text);
+  $('hint').textContent=desktopIntent(text)?'Consultando o Desktop…':'Conversando com o núcleo de IA…';
+  if(desktopIntent(text))response=await remoteDesktop(text);
   else{const res=await api('ai/chat',{method:'POST',body:JSON.stringify({text})});response=(await res.json()).text||'O servidor não retornou uma resposta.'}
   bubble(response,'hidra');$('hint').textContent='Pronta para conversar';await speak(response);handled=true;
  }catch(e){const message='Não consegui completar: '+(e.name==='AbortError'?'tempo limite da conexão':e.message);bubble(message,'hidra');$('hint').textContent='Núcleo local disponível';}
@@ -93,7 +103,6 @@ $('settingsTile').onclick=()=>{$('settings').hidden=false};$('closeSettings').on
 $('save').onclick=()=>{state.base=$('endpoint').value.trim().replace(/\/$/,'');state.token=$('token').value.trim();localStorage.setItem('hidra.base',state.base);localStorage.setItem('hidra.token',state.token);$('settings').hidden=true;ping()};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 $('talk').onclick=()=>{if(!SR){$('hint').textContent='Reconhecimento de voz indisponível neste navegador. Use o campo de texto.';return}const r=new SR();r.lang='pt-BR';r.interimResults=false;r.maxAlternatives=1;$('talk').classList.add('listening');$('talk').textContent='🎙 OUVINDO...';r.onresult=e=>{const t=e.results[0][0].transcript;$('message').value=t;send(t)};r.onerror=e=>{$('hint').textContent='Microfone: '+e.error};r.onend=()=>{$('talk').classList.remove('listening');$('talk').textContent='🎙 ATIVAR MICROFONE'};try{r.start()}catch(e){$('hint').textContent='Não foi possível abrir o microfone'}};
-const newsScript=document.createElement('script');newsScript.src='./news.js?v=13';newsScript.defer=true;document.head.appendChild(newsScript);
 // Motor 1.2 extraído do CAPX, carregado como script local. O Service Worker o guarda para uso offline.
 const core=document.createElement('script');core.src='./hidra-intelligence.js?v=12';core.async=false;core.onerror=()=>{$('hint').textContent='Falha ao carregar motor local. Conecte uma vez e recarregue.'};document.head.appendChild(core);
 // Ferramentas de desenvolvimento, em um painel que não altera o layout original do PWA.
