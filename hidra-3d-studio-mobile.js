@@ -1,4 +1,4 @@
-/* HIDRA 2.0 / 3D STUDIO MOBILE V19
+/* HIDRA 2.0 / 3D STUDIO MOBILE V20
    Modelagem manual sem comandos, eixo Z para cima, controles X/Y/Z.
    Projetos locais + Biblioteca Python (.json), sem exigir novas rotas.
    STL experimental em malha unica; STL nao armazena pecas individuais.
@@ -8,8 +8,8 @@ if(window.HIDRA3DStudioMobile)return;
 const $=id=>document.getElementById(id);
 const STORE='hidra.mobile.3dstudio.projects.v1';
 const CURRENT='hidra.mobile.3dstudio.current.v1';
-const TYPES={cube:'Cubo',sphere:'Esfera',cylinder:'Cilindro',cone:'Cone',mesh:'Malha STL'};
-const V19='19.0', AXIS_COLORS=['#ff7169','#65d58b','#65aeff'];
+const TYPES={cube:'Cubo',sphere:'Esfera',cylinder:'Cilindro',cone:'Cone',mesh:'Malha 3D'};
+const V19='20.0', AXIS_COLORS=['#ff7169','#65d58b','#65aeff'];
 const COLORS=['#57b9d7','#7cc7da','#5da0be','#a1d6e8','#a9aecf'];
 const css=`
 #h3sModal[hidden]{display:none!important}
@@ -27,6 +27,10 @@ const css=`
 #h3sModal input{padding:4px 6px;min-width:0;max-width:100%;background:#061c2b}
 #h3sModal .h3s-strip{flex:0 0 auto;display:flex;gap:5px;padding:6px;overflow-x:auto;scrollbar-width:thin;border-bottom:1px solid #205a70;background:#082435}
 #h3sModal .h3s-strip button{flex:0 0 auto}
+
+#h3sModal .h3s-io-menu[hidden]{display:none!important}
+#h3sModal .h3s-io-menu{position:absolute;right:8px;top:8px;z-index:20;display:flex;flex-direction:column;gap:6px;padding:9px;background:#082d41;border:1px solid #69d2e8;border-radius:10px;box-shadow:0 14px 28px #000c;min-width:162px}
+#h3sModal .h3s-io-menu button{text-align:left;white-space:normal}
 #h3sModal .h3s-add-menu[hidden]{display:none!important}
 #h3sModal .h3s-add-menu{position:absolute;z-index:10;top:8px;left:8px;width:170px;background:#082d41;border:1px solid #6ed3f0;border-radius:10px;box-shadow:0 12px 30px #000c;padding:8px;display:flex;flex-direction:column;gap:6px}
 #h3sModal .h3s-add-menu button{text-align:left;background:#0d4057}
@@ -58,9 +62,9 @@ const stylesheet=document.createElement('style');stylesheet.id='h3sStyles';style
 const modal=document.createElement('section');modal.id='h3sModal';modal.hidden=true;modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-label','HIDRA 3D Studio - Editor procedural');
 modal.innerHTML=`<div class="h3s-window">
  <div class="h3s-head"><div><strong>⬡ HIDRA / 3D STUDIO</strong><small id="h3sProjectTitle">PROJETO PROCEDURAL</small></div><button id="h3sClose" type="button">✕ Fechar</button></div>
- <div class="h3s-strip" aria-label="Projetos"><button data-action="new">＋ Novo</button><select id="h3sProjects" aria-label="Projetos salvos"></select><button data-action="open">Abrir</button><button data-action="save">Salvar</button><button data-action="library">Biblioteca</button><button data-action="export">⬇ Projeto</button><button data-action="import">⬆ Projeto</button><button data-action="exportstl">⬇ STL</button><button data-action="importstl">⬆ STL</button></div>
+ <div class="h3s-strip" aria-label="Projetos"><button data-action="new">＋ Novo</button><select id="h3sProjects" aria-label="Projetos salvos"></select><button data-action="open">Abrir</button><button data-action="save">Salvar</button><button data-action="library">Biblioteca</button><button id="h3sImportToggle" type="button" aria-expanded="false">⬆ Importar ▾</button><button id="h3sExportToggle" type="button" aria-expanded="false">⬇ Exportar ▾</button></div>
  <div class="h3s-strip" aria-label="Manipulação"><button id="h3sAddToggle" type="button" aria-expanded="false" aria-controls="h3sAddMenu">＋ Adicionar</button><button data-mode="view" class="active">◎ Câmera</button><button data-mode="move">✥ Mover</button><button data-mode="rotate">⟳ Girar</button><button data-mode="scale">⤢ Escalar</button><button data-action="resetview">⌖ Enquadrar</button><button data-action="undo">↶</button><button data-action="redo">↷</button></div>
- <div class="h3s-stage"><canvas id="h3sCanvas" aria-label="Área de modelagem procedural"></canvas><div class="h3s-add-menu" id="h3sAddMenu" hidden><strong>ADICIONAR FORMA</strong><button data-add="cube">▣ Cubo</button><button data-add="sphere">● Esfera</button><button data-add="cylinder">▥ Cilindro</button><button data-add="cone">▲ Cone</button></div><div class="h3s-overlay" id="h3sOverlay">CENA / EDITOR LIVRE</div><div class="h3s-axis-key"><span class="x">X</span> <span class="y">Y</span> <span class="z">Z ↑</span></div><div class="h3s-help" id="h3sHelp">1 dedo: girar câmera · toque: selecionar · 2 dedos: zoom e deslocamento</div></div>
+ <div class="h3s-stage"><div class="h3s-io-menu" id="h3sIOMenu" hidden></div><canvas id="h3sCanvas" aria-label="Área de modelagem procedural"></canvas><div class="h3s-add-menu" id="h3sAddMenu" hidden><strong>ADICIONAR FORMA</strong><button data-add="cube">▣ Cubo</button><button data-add="sphere">● Esfera</button><button data-add="cylinder">▥ Cilindro</button><button data-add="cone">▲ Cone</button></div><div class="h3s-overlay" id="h3sOverlay">CENA / EDITOR LIVRE</div><div class="h3s-axis-key"><span class="x">X</span> <span class="y">Y</span> <span class="z">Z ↑</span></div><div class="h3s-help" id="h3sHelp">1 dedo: girar câmera · toque: selecionar · 2 dedos: zoom e deslocamento</div></div>
  <div class="h3s-bottom"><div class="h3s-list" id="h3sList" aria-label="Objetos do projeto"></div>
  <div class="h3s-edit" id="h3sEdit"><div class="h3s-info-row"><input type="text" id="h3sName" maxlength="65" placeholder="Nome da peça" aria-label="Nome do objeto"><input type="color" id="h3sColor" aria-label="Cor da peça" value="#57b9d7"><button data-action="duplicate">Duplicar</button><button data-action="delete">Excluir</button></div>
  <div class="h3s-axes" id="h3sAxes"><span>Posição</span><label>X<input type="number" data-prop="position" data-axis="0" step="0.1"></label><label>Y<input type="number" data-prop="position" data-axis="1" step="0.1"></label><label>Z<input type="number" data-prop="position" data-axis="2" step="0.1"></label>
@@ -69,7 +73,7 @@ modal.innerHTML=`<div class="h3s-window">
  <div class="h3s-act"><button data-action="hide">◉ Ocultar/Mostrar</button><button data-action="restore">↺ Restaurar peça</button><button data-action="clear">Limpar cena</button></div></div></div>
  <div class="h3s-status" id="h3sStatus" role="status" aria-live="polite">Modelagem local: não precisa do servidor Python.</div>
  <input id="h3sImportFile" type="file" accept=".hidra3d,.json" hidden>
- <input id="h3sSTLFile" type="file" accept=".stl" hidden>
+ <input id="h3sSTLFile" type="file" accept=".stl" hidden><input id="h3sModelFile" type="file" accept=".stl,.obj,.3mf" hidden>
 </div>`;
 document.body.appendChild(modal);
 const canvas=$('h3sCanvas'),ctx=canvas.getContext('2d',{alpha:false}),statusEl=$('h3sStatus');
@@ -132,9 +136,10 @@ async function openLibrary(){
   const choices=files.slice(0,25).map((f,i)=>(i+1)+'. '+f.name+' (v'+(f.version||1)+')').join('\n');
   const selected=prompt('Projetos na Biblioteca:\n'+choices+'\n\nDigite o número para abrir:','1');
   if(selected===null)return;const i=Number(selected)-1;if(!Number.isInteger(i)||!files[i])throw Error('Número de projeto inválido.');
-  const file=files[i];const response=await libReq('download?id='+encodeURIComponent(file.id));
-  // A rota download retorna bytes; chamada GET especifica para JSON, sem alteracao no Python.
-  const clean=cleanImported(response);newProject(clean.name);project.objects=clean.objects;project.libraryFileId=file.id;selectedId=null;saveNow();renderPartsList();renderInspector();notice('Projeto aberto da Biblioteca: '+project.name+'.');
+  const file=files[i];const cfg=libraryConfig();const response=await fetch(cfg.base+'/mobile/api/library/download?id='+encodeURIComponent(file.id),{headers:{Authorization:'Bearer '+cfg.token}});
+  if(!response.ok)throw Error('Falha ao baixar projeto da Biblioteca (HTTP '+response.status+').');
+  const raw=JSON.parse(await response.text());
+  const clean=cleanImported(raw);newProject(clean.name);project.objects=clean.objects;project.libraryFileId=file.id;selectedId=null;saveNow();renderPartsList();renderInspector();notice('Projeto aberto da Biblioteca: '+project.name+'.');
  }catch(e){notice('Biblioteca: '+e.message,true);}
 }
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,550);}
@@ -348,12 +353,44 @@ function move(e){const p=pointers.get(e.pointerId);if(!p)return;e.preventDefault
 function up(e){if(!pointers.has(e.pointerId))return;pointers.delete(e.pointerId);
  if(!pointers.size){if(dragging&&dragSnapshot){historyPush(dragSnapshot);modified();}else if(press&&!press.moved&&!press.hit){selectedId=null;renderPartsList();renderInspector();}dragging=false;dragSnapshot=null;gizmoDrag=null;press=null;pinch=null;}
  else if(pointers.size===1){const p=[...pointers.values()][0];press={x:p.x,y:p.y,button:p.button,hit:false,moved:true};pinch=null;dragSnapshot=null;}}
+let modelImportKind='';
+function ioMenu(type){
+ const menu=$('h3sIOMenu'),show=type&&menu.hidden;menu.hidden=!show;menu.replaceChildren();
+ $('h3sImportToggle').setAttribute('aria-expanded',String(show&&type==='import'));
+ $('h3sExportToggle').setAttribute('aria-expanded',String(show&&type==='export'));
+ if(!show)return;
+ const formats=[['stl','STL · geometria'],['obj','OBJ · peças'],['3mf','3MF · peças e cores'],['hidra3d','Projeto HIDRA · editável']];
+ for(const [ext,label] of formats){const b=document.createElement('button');b.type='button';b.textContent=(type==='import'?'⬆ ':'⬇ ')+label;
+ b.onclick=()=>{ioMenu(null);if(type==='import')importChoice(ext);else exportChoice(ext);};menu.appendChild(b);}
+}
+function importChoice(ext){if(ext==='hidra3d')return $('h3sImportFile').click();modelImportKind=ext;const input=$('h3sModelFile');input.accept='.'+ext;input.click();}
+function exportChoice(ext){if(ext==='hidra3d'){saveNow();exportProject();return;}
+ try{if(!window.HIDRA3DIO)throw Error('Módulo de formatos 3D não carregado.');
+ const answer=prompt('Quantos milímetros vale 1 unidade do editor?','10');if(answer===null)return;const mm=Number(answer.replace(',','.'));
+ const count=window.HIDRA3DIO.exportModel(project,ext,mm);notice(ext.toUpperCase()+' exportado com '+count+' peça(s). Confira as dimensões no fatiador.');
+ }catch(e){notice('Exportar '+ext.toUpperCase()+': '+e.message,true);}
+}
+async function importAnyFile(e){const input=e.target,file=input.files?.[0];input.value='';if(!file)return;
+ try{if(!window.HIDRA3DIO)throw Error('Módulo de formatos 3D não carregado.');
+ const result=await window.HIDRA3DIO.importModel(file,modelImportKind,10);
+ if(project.objects.length+result.objects.length>80)throw Error('Limite de 80 peças atingido.');
+ const currentFaces=project.objects.filter(o=>o.type==='mesh').reduce((n,o)=>n+(o.geometry?.f?.length||0),0);
+ const newFaces=result.objects.reduce((n,o)=>n+(o.geometry?.f?.length||0),0);
+ if(currentFaces+newFaces>1800)throw Error('Limite de 1.800 triângulos de malhas importadas atingido.');
+ historyPush();const before=project.objects.length;
+ for(const o of result.objects){o.id=uid();project.objects.push(o);}
+ selectedId=result.objects[0]?.id||null;modified();setMode('move');notice(result.objects.length+' peça(s) importada(s) de '+file.name+'.');
+ }catch(err){notice('Importar '+modelImportKind.toUpperCase()+': '+(err.message||err),true);}
+}
 function setAddMenu(show){$('h3sAddMenu').hidden=!show;$('h3sAddToggle').setAttribute('aria-expanded',String(show));}
 function closeAddMenu(){setAddMenu(false);}
 function attachEvents(){
  modal.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>add(b.dataset.add)));
- $('h3sAddToggle').addEventListener('click',()=>setAddMenu($('h3sAddMenu').hidden));
- canvas.addEventListener('pointerdown',closeAddMenu);
+ $('h3sAddToggle').addEventListener('click',()=>{ioMenu(null);setAddMenu($('h3sAddMenu').hidden);});
+ $('h3sImportToggle').addEventListener('click',()=>{closeAddMenu();ioMenu('import');});
+ $('h3sExportToggle').addEventListener('click',()=>{closeAddMenu();ioMenu('export');});
+ $('h3sModelFile').addEventListener('change',importAnyFile);
+ canvas.addEventListener('pointerdown',()=>{closeAddMenu();ioMenu(null);});
  modal.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
  modal.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>applyAction(b.dataset.action)));
  $('h3sName').addEventListener('change',e=>{const o=current();if(!o)return;historyPush();o.name=safeName(e.target.value,TYPES[o.type]);modified();});
@@ -380,7 +417,7 @@ let previousOverflow='';
 function open(){if(opened)return;window.HIDRA3DMobile?.close?.();previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';modal.hidden=false;opened=true;
  if(!project.id){loadStorage();const id=localStorage.getItem(CURRENT);if(id&&projects[id])openProject(id);else newProject('Meu primeiro projeto');}
  renderPartsList();renderInspector();setMode('view');lastFrame=0;raf=requestAnimationFrame(draw);notice('Editor pronto · Z é para cima. Salvar sincroniza com a Biblioteca quando o PC estiver ligado.');}
-function close(){if(!opened)return;clearTimeout(saveTimer);saveNow();opened=false;modal.hidden=true;document.body.style.overflow=previousOverflow;if(raf)cancelAnimationFrame(raf);raf=0;pointers.clear();}
+function close(){if(!opened)return;ioMenu(null);closeAddMenu();clearTimeout(saveTimer);saveNow();opened=false;modal.hidden=true;document.body.style.overflow=previousOverflow;if(raf)cancelAnimationFrame(raf);raf=0;pointers.clear();}
 attachEvents();
 // Entradas integradas ao visualizador que ja existe na V17.
 function addEntry(){const viewer=$('hidra3dMobile');const bar=viewer?.querySelector('.h3mscenes');if(bar&&!bar.querySelector('#h3sOpenFromViewer')){
