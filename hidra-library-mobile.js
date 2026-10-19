@@ -83,7 +83,7 @@ if(form && !document.getElementById('hlComposerAttach')){
  const name=document.createElement('span');const remove=document.createElement('button');remove.type='button';remove.textContent='✕';remove.setAttribute('aria-label','Remover anexo');
  chip.append(name,remove);form.parentElement.insertBefore(chip,form);
  function renderPending(){chip.hidden=!pendingFile;if(pendingFile)name.textContent='📎 '+pendingFile.name}
- remove.onclick=()=>{pickEpoch++;pendingFile=null;pendingBytes=null;pendingLoading=false;picker.value='';renderPending();progress('Anexo removido.');};
+ remove.onclick=()=>{pickEpoch++;pendingFile=null;pendingBytes=null;pendingLoading=false;picker.value='';renderPending();clearProgress();};
  // No Android, o provedor de arquivos pode invalidar a referencia depois que o seletor fecha.
  // Fazemos a leitura AGORA e guardamos apenas os bytes na memoria, antes do clique em Enviar.
  picker.onchange=async()=>{
@@ -121,6 +121,7 @@ if(form && !document.getElementById('hlComposerAttach')){
    transferStatus.style.borderColor=isError?'#df7777':'#398ba7';
    transferStatus.style.color=isError?'#ffd3d3':'#b4edfb';
  }
+ function clearProgress(){transferStatus.hidden=true;transferStatus.textContent='';}
  function chatMessage(message,who='hidra'){
    const history=$('history');if(!history)return null;
    const el=document.createElement('div');el.className='bubble '+who;el.textContent=message;
@@ -158,20 +159,23 @@ if(form && !document.getElementById('hlComposerAttach')){
      try{
        config(); // verificar HTTPS e pareamento antes de registrar a solicitacao
        chatMessage('📎 '+filename+'\n'+instruction,'me');
+       // Apos Enviar, a mensagem vai para o historico e o compositor fica livre.
+       message.value='';
+       if(selectedFile){pendingFile=null;pendingBytes=null;picker.value='';renderPending();}
+       clearProgress();
        let info=lastFile;
        if(selectedFile){
          if(!selectedBytes?.length)throw Error('Anexo não carregado. Selecione o arquivo novamente.');
          phase='envio';
-         progress('Enviando '+filename+' para a Biblioteca da HIDRA...');
+         // Andamento interno; a barra do terminal nao deve permanecer visivel.
          const uploaded=await(await req('upload',{name:selectedFile.name,data:b64(selectedBytes)})).json();
          info=uploaded.file;
          if(!info?.id)throw Error('O servidor não confirmou o recebimento do arquivo.');
          lastFile=info;
-         pendingFile=null;pendingBytes=null;picker.value='';renderPending();
        }
        if(!info?.id)throw Error('O servidor não retornou o identificador do arquivo.');
        phase=operation==='edit'?'correcao':'analise';
-       progress(operation==='edit'?'Arquivo recebido. A HIDRA está corrigindo o código...':'Arquivo recebido. A HIDRA está analisando...');
+       // O resultado sera apresentado apenas na conversa.
        const result=await(await req(operation,{id:info.id,instruction})).json();
        if(operation==='edit'){
          if(!result.file?.id)throw Error('O servidor não retornou uma versao corrigida.');
@@ -184,30 +188,31 @@ if(form && !document.getElementById('hlComposerAttach')){
              if(busy)return;
              lock(true);
              try{
-               progress('Preparando download de '+result.file.name+'...');
+               clearProgress();
                const response=await req('download?id='+encodeURIComponent(result.file.id));
                const blob=await response.blob();const url=URL.createObjectURL(blob);
                const a=document.createElement('a');a.href=url;a.download=result.file.name;document.body.appendChild(a);a.click();a.remove();
                setTimeout(()=>URL.revokeObjectURL(url),30000);
-               progress('Download solicitado: '+result.file.name+'.');
-             }catch(err){const msg=reportError(err,'download');progress('Falha no download: '+msg,true);chatMessage('HIDRA · Não consegui baixar o arquivo: '+msg,'hidra')}
+               clearProgress(); // O Android confirma o download na barra de notificacoes.
+             }catch(err){const msg=reportError(err,'download');clearProgress();chatMessage('HIDRA · Não consegui baixar o arquivo: '+msg,'hidra')}
              finally{lock(false)}
            };
            bubble.appendChild(download);
          }
-         progress('Correção concluída. Use o botao Baixar acima.');
+         clearProgress();
        }else{
          sendToChat(result.analysis||'A análise não retornou texto.',info.name);
-         progress('Análise concluída. Resultado enviado para Conversas.');
+         clearProgress();
        }
-       message.value='';
      }catch(err){
        const reason=reportError(err,operation);
        const step={conexao:'conexão com o servidor',envio:'envio do arquivo',correcao:'correção pelo servidor',analise:'análise pelo servidor'}[phase]||'processamento';
-       progress('Falha na etapa '+step+' ('+filename+'): '+reason,true);
+       clearProgress();
        status('Falha na etapa '+step+': '+reason);
        chatMessage('HIDRA · Não consegui processar '+filename+'.\nEtapa: '+step+'.\nMotivo: '+reason,'hidra');
-       // Não limpa o campo de texto no erro: o usuario pode corrigir e tentar novamente.
+       // Em caso de falha, restaurar o rascunho para facilitar nova tentativa.
+       if(!message.value.trim())message.value=instruction;
+       if(selectedFile&&selectedBytes?.length&&!pendingFile){pendingFile=selectedFile;pendingBytes=selectedBytes;renderPending();}
      }finally{lock(false)}
    })();
  };
