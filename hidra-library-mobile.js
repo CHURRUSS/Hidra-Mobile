@@ -17,22 +17,26 @@ const css=document.createElement('style');css.textContent=`
 #hidraLibraryMobile .hlfile{width:100%;text-align:left;overflow-wrap:anywhere}
 #hidraLibraryMobile .hlfile.active{background:#145b75;border-color:#83eaff}
 #hidraLibraryMobile .hltext{white-space:pre-wrap;overflow-wrap:anywhere;max-height:46dvh;overflow:auto;background:#02101c;border:1px solid #2d5a71;border-radius:7px;padding:11px;font:12px/1.55 monospace}
+#hlAttachmentChip{display:flex;align-items:center;gap:8px;margin:5px 0 8px;padding:7px 10px;border:1px solid #368ca6;border-radius:9px;background:#09283b;color:#d5f8ff;font:12px Arial,sans-serif}
+#hlAttachmentChip[hidden]{display:none!important}
+#hlAttachmentChip span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hlAttachmentChip button{border:0;background:transparent;color:#d5f8ff;font-size:19px;padding:0 5px}
 #hidraLibraryMobile .hlstatus{font-size:12px;color:#8cc8dd;min-height:16px}
 `;document.head.appendChild(css);
 const panel=document.createElement('section');panel.id='hidraLibraryMobile';panel.hidden=true;
 panel.innerHTML=`<div class="hlbox"><div class="hlrow hlhead"><strong>HIDRA / BIBLIOTECA</strong><button id="hlClose" type="button">FECHAR ✕</button></div>
 <input id="hlSearch" placeholder="Pesquisar arquivos da Biblioteca" aria-label="Pesquisar na biblioteca">
-<div class="hlrow"><button type="button" id="hlUpload">+ ANEXAR</button><button type="button" id="hlAnalyze">ANALISAR</button><button type="button" id="hlPreview">VER CONTEÚDO</button><button type="button" id="hlAiEdit">CORRIGIR COM IA</button><button type="button" id="hlEdit">EDITAR CÓPIA</button><button type="button" id="hlDownload">BAIXAR</button></div>
+<div class="hlrow"><button type="button" id="hlUpload">+ ANEXAR</button><button type="button" id="hlAnalyze">ANALISAR</button><button type="button" id="hlPreview">VER CONTEÚDO</button><button type="button" id="hlAiEdit">CORRIGIR COM IA</button><button type="button" id="hlEdit">EDITAR CÓPIA</button><button type="button" id="hlDownload">BAIXAR</button><button type="button" id="hlDelete">EXCLUIR</button></div>
 <input id="hlFile" type="file" hidden accept=".txt,.md,.py,.js,.json,.html,.css,.xml,.csv,.bat,.ini,.log,.yaml,.yml,.sql,.capx,.zip,.pdf,.docx,.xlsx,.png,.jpg,.jpeg,.webp">
 <div class="hlstatus" id="hlStatus" aria-live="polite"></div>
 <div class="hlfiles" id="hlFiles"></div><div id="hlOutput" class="hltext" hidden></div></div>`;
 document.body.appendChild(panel);
-let items=[],selected=null,busy=false,timer=null;
+let items=[],selected=null,busy=false,timer=null,pendingFile=null,lastFile=null;
 function status(t){$('hlStatus').textContent=t}
 function config(){const url=(localStorage.getItem('hidra.base')||'').trim().replace(/\/$/,'');const token=(localStorage.getItem('hidra.token')||'').trim();if(!url||!token)throw Error('Configure o endereço HTTPS e a chave em Ajustes para usar a Biblioteca do PC.');if(!/^https:\/\//i.test(url)&&!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url))throw Error('Para conexão remota use HTTPS nos Ajustes.');return {url,token}}
 async function req(path,data){const cfg=config();const ctrl=new AbortController(),timeout=setTimeout(()=>ctrl.abort(),150000);
  try{const r=await fetch(cfg.url+'/mobile/api/library/'+path,{method:data===undefined?'GET':'POST',headers:{Authorization:'Bearer '+cfg.token,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:ctrl.signal});if(!r.ok){let msg='Erro HTTP '+r.status;try{msg=(await r.json()).error||msg}catch(e){}throw Error(msg)}return r}finally{clearTimeout(timeout)}}
-function lock(on){busy=on;['hlUpload','hlAnalyze','hlPreview','hlAiEdit','hlEdit','hlDownload'].forEach(id=>$(id).disabled=on)}
+function lock(on){busy=on;['hlUpload','hlAnalyze','hlPreview','hlAiEdit','hlEdit','hlDownload','hlDelete'].forEach(id=>$(id).disabled=on)}
 function show(t){$('hlOutput').hidden=false;$('hlOutput').textContent=String(t||'')}
 function listRender(){const el=$('hlFiles');el.replaceChildren();if(!items.length){el.textContent='Nenhum arquivo encontrado.';return}
  items.forEach(f=>{const b=document.createElement('button');b.type='button';b.className='hlfile'+(selected===f.id?' active':'');b.textContent=f.name+' · '+(f.size/1024).toFixed(1)+' KB'+(f.version>1?' · v'+f.version:'');b.onclick=()=>{selected=f.id;listRender();status('Selecionado: '+f.name)};el.appendChild(b)})}
@@ -44,7 +48,7 @@ function sendToChat(text,filename){const history=$('history');if(history){const 
 $('hlClose').onclick=()=>panel.hidden=true;
 $('hlSearch').oninput=()=>{clearTimeout(timer);timer=setTimeout(refresh,300)};
 $('hlUpload').onclick=()=>$('hlFile').click();
-$('hlFile').onchange=()=>action(async()=>{const f=$('hlFile').files[0];if(!f)return;if(f.size>8*1024*1024)throw Error('Limite máximo de 8 MB por arquivo.');status('Armazenando '+f.name+'…');const arr=new Uint8Array(await f.arrayBuffer());await req('upload',{name:f.name,data:b64(arr)});$('hlFile').value='';await refresh();status('Arquivo salvo permanentemente na Biblioteca: '+f.name)});
+$('hlFile').onchange=()=>action(async()=>{const f=$('hlFile').files[0];if(!f)return;if(f.size>8*1024*1024)throw Error('Limite máximo de 8 MB por arquivo.');status('Armazenando '+f.name+'…');const arr=new Uint8Array(await f.arrayBuffer());const v=await(await req('upload',{name:f.name,data:b64(arr)})).json();lastFile=v.file||null;$('hlFile').value='';await refresh();status('Arquivo salvo permanentemente na Biblioteca: '+f.name)});
 $('hlPreview').onclick=()=>action(async()=>{const f=chosen();status('Lendo '+f.name+'…');const v=await(await req('preview?id='+encodeURIComponent(f.id))).json();show(v.text||'Sem prévia de texto disponível.');status('Conteúdo recuperado: '+f.name)});
 $('hlAnalyze').onclick=()=>action(async()=>{const f=chosen();status('Analisando '+f.name+' com a HIDRA…');const v=await(await req('analyze',{id:f.id,instruction:'Analise objetivamente este arquivo: resumo, problemas e melhorias, sem repetir listas.'})).json();const text=v.analysis||'Sem resposta da IA.';show(text);sendToChat(text,f.name);status('Análise concluída e enviada para Conversas.');});
 $('hlAiEdit').onclick=()=>action(async()=>{
@@ -63,18 +67,54 @@ $('hlAiEdit').onclick=()=>action(async()=>{
  status('Correção salva. Arquivo selecionado para download: '+v.file.name);
 });
 $('hlEdit').onclick=()=>action(async()=>{const f=chosen();const v=await(await req('preview?id='+encodeURIComponent(f.id))).json();if(!['.txt','.md','.py','.js','.json','.html','.css','.xml','.csv','.bat','.ini','.log','.yaml','.yml','.sql'].includes(f.ext))throw Error('Edição de cópia disponível apenas para arquivos de texto/código.');const edited=prompt('Editar uma cópia de '+f.name+' (o original não será alterado):',v.text);if(edited===null)return;await req('version',{id:f.id,text:edited});await refresh();status('Nova versão criada; original preservado.');});
+$('hlDelete').onclick=()=>action(async()=>{const f=chosen();if(!confirm('Excluir permanentemente '+f.name+' da Biblioteca? Esta ação não pode ser desfeita.'))return;await req('delete',{id:f.id});if(lastFile?.id===f.id)lastFile=null;if(pendingFile?.id===f.id){pendingFile=null;document.getElementById('hlAttachmentChip')?.setAttribute('hidden','')}selected=null;await refresh();status('Arquivo excluído: '+f.name)});
 $('hlDownload').onclick=()=>action(async()=>{const f=chosen();const r=await req('download?id='+encodeURIComponent(f.id));const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=f.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status('Download iniciado: '+f.name)});
 const tile=document.createElement('button');tile.type='button';tile.className='module';tile.id='libraryTile';tile.innerHTML='<span class="symbol">▧</span><span>Biblioteca</span>';tile.onclick=()=>{panel.hidden=false;$('hlOutput').hidden=true;refresh()};document.querySelector('.modules')?.appendChild(tile);
-// Entrada permanente no terminal, além do módulo na tela inicial.
+// Anexo no compositor: escolha primeiro, escreva a instrução e envie ambos juntos.
 const form=document.getElementById('sendform');
 if(form && !document.getElementById('hlComposerAttach')){
- const attach=document.createElement('button');
- attach.type='button';attach.id='hlComposerAttach';attach.textContent='＋';
- attach.setAttribute('aria-label','Anexar arquivo pela Biblioteca');
- attach.title='Anexar arquivo / Biblioteca';
+ const attach=document.createElement('button');attach.type='button';attach.id='hlComposerAttach';attach.textContent='＋';
+ attach.setAttribute('aria-label','Selecionar arquivo para a conversa');attach.title='Anexar arquivo à mensagem';
  attach.style.cssText='flex:0 0 42px;min-width:42px;height:42px;border:1px solid #398ba7;border-radius:10px;background:#10394e;color:#d5f8ff;font-size:26px;line-height:1;cursor:pointer;';
- attach.addEventListener('click',()=>{panel.hidden=false;$('hlOutput').hidden=true;refresh();});
- form.insertBefore(attach,form.firstChild);
+ const picker=document.createElement('input');picker.type='file';picker.id='hlChatFile';picker.hidden=true;
+ picker.accept=$('hlFile').accept;document.body.appendChild(picker);
+ attach.addEventListener('click',()=>picker.click());form.insertBefore(attach,form.firstChild);
+ const chip=document.createElement('div');chip.id='hlAttachmentChip';chip.hidden=true;
+ const name=document.createElement('span');const remove=document.createElement('button');remove.type='button';remove.textContent='✕';remove.setAttribute('aria-label','Remover anexo');
+ chip.append(name,remove);form.parentElement.insertBefore(chip,form);
+ function renderPending(){chip.hidden=!pendingFile;if(pendingFile)name.textContent='📎 '+pendingFile.name}
+ remove.onclick=()=>{pendingFile=null;picker.value='';renderPending()};
+ picker.onchange=()=>{const file=picker.files[0];if(!file)return;if(file.size>8*1024*1024){alert('O arquivo deve ter até 8 MB.');picker.value='';return}pendingFile=file;renderPending()};
+ const originalFormSubmit=e=>{if(!pendingFile && !(lastFile&&/^\s*(?:hidra[, ]*)?(?:agora|nesse|neste|no mesmo|na versão|corrija novamente|melhore|ajuste|modifique).*\b(?:arquivo|código|codigo|versão|versao|função|funcao)\b/i.test($('message').value)))return;
+   e.preventDefault();e.stopImmediatePropagation();if(busy)return;
+   const instruction=$('message').value.trim();if(!instruction){status('Escreva o que a HIDRA deve fazer com o arquivo.');return}
+   const f=pendingFile;const followup=!f&&lastFile;const fileName=f?f.name:lastFile.name;
+   const history=$('history');const user=document.createElement('div');user.className='bubble user';user.textContent=(f?'📎 '+fileName+'\n':'')+instruction;
+   history?.appendChild(user);if(history)history.scrollTop=history.scrollHeight;
+   document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id==='conversation'));
+   document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.tab==='conversation'));
+   $('message').value='';pendingFile=null;picker.value='';renderPending();
+   action(async()=>{
+     let info=lastFile;
+     if(f){const arr=new Uint8Array(await f.arrayBuffer());const uploaded=await(await req('upload',{name:f.name,data:b64(arr)})).json();info=uploaded.file;lastFile=info}
+     if(!info?.id)throw Error('O servidor não retornou o identificador do arquivo.');
+     const wantsEdit=/\b(corrig|consert|modifi|alter|edit|reescrev|melhor|ajust|refator|devolv|gere|crie|atualiz)/i.test(instruction);
+     const operation=wantsEdit?'edit':'analyze';
+     const result=await(await req(operation,{id:info.id,instruction})).json();
+     if(wantsEdit){if(!result.file?.id)throw Error('O servidor não retornou uma versão corrigida.');lastFile=result.file;
+       const bubble=document.createElement('div');bubble.className='bubble hidra';
+       const text=document.createElement('div');text.textContent='HIDRA · Arquivo corrigido: '+result.file.name+'\n'+(result.message||'Versão salva na Biblioteca.');
+       const download=document.createElement('button');download.type='button';download.textContent='⬇ Baixar '+result.file.name;
+       download.style.cssText='margin-top:9px;padding:9px 12px;border:1px solid #4ba4c4;border-radius:8px;background:#104258;color:#dffaff';
+       download.onclick=()=>action(async()=>{const response=await req('download?id='+encodeURIComponent(result.file.id));const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=result.file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)});
+       bubble.append(text,download);history?.appendChild(bubble);
+     }else{sendToChat(result.analysis||'A análise não retornou texto.',info.name)}
+     if(history)history.scrollTop=history.scrollHeight;
+   });
+ };
+ // Capture phase intercepts only messages involving a file. Ordinary chat stays untouched.
+ form.addEventListener('submit',originalFormSubmit,true);
+ // Keep send button working even if other scripts call submit programmatically.
 }
 window.HIDRALibraryMobile={open:()=>tile.click(),refresh};
 })();
