@@ -91,7 +91,7 @@ async function send(input){const text=String(input||'').trim();if(!text||state.b
   if(localIntent(text)){response=localAnswer(text);bubble(response,'hidra');await speak(response);handled=true;return}
   if(newsIntent(text)){
    if(state.privacy){response='Modo privacidade ativado: não consultarei fontes externas.'}
-   else{const result=await window.HIDRAMobilePublic.news(newsTopic(text));response=(result.stale?'Últimas notícias salvas (não atualizadas):\n':'Notícias sobre '+result.topic+':\n')+result.items.map((item,i)=>(i+1)+'. '+item.title+' — '+item.source).join('\n')}
+   else{const result=await window.HIDRAMobilePublic.news(newsTopic(text));response=result.items.length?((result.stale?'Últimas notícias salvas (não atualizadas):\n':'Notícias sobre '+result.topic+':\n')+result.items.map((item,i)=>(i+1)+'. '+item.title+' — '+item.source).join('\n')):(result.notice||'Nenhuma manchete encontrada para '+result.topic+'.')}
    bubble(response,'hidra');await speak(response);handled=true;return;
   }
   if(weatherIntent(text)){

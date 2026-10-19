@@ -47,7 +47,7 @@ async function load(topic){
  state.textContent='Buscando notícias sobre '+topic+'…';list.replaceChildren();
  try{
  const data=await window.HIDRAMobilePublic.news(topic),items=data.items;
- if(!items.length){state.textContent='Nenhuma notícia encontrada sobre '+topic+'.';return}
+ if(!items.length){state.textContent=data.notice||('Nenhuma notícia encontrada sobre '+topic+' nas manchetes disponíveis.');return}
  state.textContent=(data.stale?'Notícias salvas em '+new Date(data.updated).toLocaleString('pt-BR')+' (sem atualização): ':items.length+' notícia(s) encontrada(s) — ')+(data.provider==='github'?'Fontes RSS via GitHub':data.provider==='gdelt'?'GDELT':data.provider==='bing'?'Bing Notícias':'Google Notícias')+'.';
  items.slice(0,30).forEach(item=>{
  const article=document.createElement('article'),a=document.createElement('a');

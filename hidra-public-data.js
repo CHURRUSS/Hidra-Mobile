@@ -17,23 +17,60 @@ async function gdelt(topic){
  if(!Array.isArray(data.articles)||!data.articles.length)throw Error('GDELT sem resultados');
  return data.articles.map(x=>({title:String(x.title||'').replace(/<[^>]*>/g,'').trim(),url:x.url,source:x.domain||'GDELT',date:x.seendate||'',description:''})).filter(x=>x.title&&/^https:\/\//.test(x.url||''));
 }
-const CATEGORIES={brasil:'brasil',brazil:'brasil',geral:'brasil',noticias:'brasil',notícias:'brasil', 'do dia':'brasil',tecnologia:'tecnologia',tech:'tecnologia',mundo:'mundo',internacional:'mundo',economia:'economia',financas:'economia',finanças:'economia',esporte:'esportes',esportes:'esportes',futebol:'esportes'};
-const normalize=s=>String(s||'').toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+// Assuntos indexados pelo GitHub Actions. Buscas livres consultam os titulos DE TODAS
+// as categorias publicadas: nunca trocar silenciosamente o assunto por "Brasil".
+const CATEGORIES={
+ brasil:'brasil',brazil:'brasil',geral:'brasil',noticias:'brasil','do dia':'brasil','noticias do dia':'brasil',
+ tecnologia:'tecnologia',tech:'tecnologia',mundo:'mundo',internacional:'mundo',
+ economia:'economia',financas:'economia',esporte:'esportes',esportes:'esportes',futebol:'esportes',
+ games:'games',game:'games',videogame:'games',videogames:'games','video game':'games','video games':'games',
+ jogos:'games','jogos eletronicos':'games','jogos digitais':'games',
+ ciencia:'ciencia',cientifico:'ciencia',saude:'saude',medicina:'saude',
+ entretenimento:'entretenimento',cinema:'entretenimento',filmes:'entretenimento',series:'entretenimento',musica:'entretenimento',
+ politica:'politica','inteligencia artificial':'ia',ia:'ia'
+};
+const normalize=s=>String(s||'').toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+const STOPWORDS=new Set(['de','do','da','dos','das','sobre','em','no','na','nos','nas','para','por','com','um','uma','e','o','a','os','as','hoje','ultimas','noticias']);
+const articleValid=x=>x&&typeof x.title==='string'&&typeof x.url==='string'&&/^https:\/\//.test(x.url);
+function uniqueArticles(arr){
+ const seen=new Set();return arr.filter(articleValid).filter(x=>{
+  const key=x.url; if(seen.has(key))return false; seen.add(key);return true;
+ }).map(x=>({title:x.title,url:x.url,source:x.source||'RSS',date:x.date||'',description:''}));
+}
+function byDate(a,b){return (Date.parse(b.date)||0)-(Date.parse(a.date)||0)}
 async function news(topic='Brasil'){
  topic=String(topic||'Brasil').trim().slice(0,100)||'Brasil';
- const key=CATEGORIES[normalize(topic)]||'brasil';
- const cacheKey=NCACHE+'.'+key;
+ const query=normalize(topic);
+ const category=CATEGORIES[query]||null;
+ // Cache por consulta, nunca por uma categoria substituta. Evita o bug de
+ // "Video Game" reutilizar noticias de "Brasil" quando a rede falha.
+ const cacheKey=NCACHE+'.v2.'+encodeURIComponent(query);
  try{
-  // Arquivo JSON produzido pelo GitHub Actions no mesmo domínio do PWA; sem proxy RSS/CORS.
   const data=await getJSON('./data/noticias.json?t='+Math.floor(Date.now()/60000));
-  const list=Array.isArray(data.categories?.[key])?data.categories[key]:[];
-  if(!list.length)throw Error('Ainda não há notícias publicadas para esta categoria');
-  let items=list.filter(x=>x&&typeof x.title==='string'&&/^https:\/\//.test(x.url||'')).map(x=>({title:x.title,url:x.url,source:x.source||'RSS',date:x.date||'',description:''}));
-  const specific=!Object.prototype.hasOwnProperty.call(CATEGORIES,normalize(topic));
-  if(specific){const terms=normalize(topic).split(/\s+/).filter(t=>t.length>2);const found=items.filter(x=>terms.some(t=>normalize(x.title).includes(t)));if(found.length)items=found;else throw Error('Não há notícias locais para "'+topic+'". Use Brasil, Tecnologia, Mundo, Economia ou Esportes.');}
-  const result={items:items.slice(0,30),topic,provider:'github',updated:Date.parse(data.updated_at)||Date.now(),stale:false};
+  const categories=data?.categories;
+  if(!categories||typeof categories!=='object')throw Error('Arquivo de notícias incompleto');
+  let items=[],notice='';
+  if(category){
+   items=uniqueArticles(Array.isArray(categories[category])?categories[category]:[]);
+   if(!items.length)notice='Ainda não há notícias de '+topic+' no arquivo publicado. Execute "Atualizar notícias HIDRA" no GitHub Actions e aguarde a publicação.';
+  }else{
+   // Busca livre local entre manchetes de TODAS as categorias indexadas;
+   // o PWA não tem acesso direto ao RSS por causa das regras CORS.
+   const all=uniqueArticles(Object.values(categories).flatMap(list=>Array.isArray(list)?list:[]));
+   const terms=query.split(' ').filter(t=>t.length>2&&!STOPWORDS.has(t));
+   if(terms.length){items=all.filter(x=>{
+    const title=normalize(x.title);
+    return title.includes(query)||terms.every(term=>title.includes(term));
+   }).sort(byDate)}
+   if(!items.length)notice='Nenhuma manchete sobre "'+topic+'" nas categorias disponíveis. A pesquisa funciona sobre as notícias coletadas pelo GitHub, não sobre toda a internet.';
+  }
+  const result={items:items.slice(0,30),topic,provider:'github',updated:Date.parse(data.updated_at)||Date.now(),stale:false,notice};
   safeWrite(cacheKey,result);return result;
- }catch(e){const old=safeRead(cacheKey);if(old)return {...old,stale:true,error:e.message};throw Error('Notícias indisponíveis: '+e.message)}
+ }catch(e){
+  const old=safeRead(cacheKey);
+  if(old&&normalize(old.topic)===query&&Array.isArray(old.items))return {...old,stale:true,error:e.message};
+  throw Error('Notícias indisponíveis: '+e.message);
+ }
 }
 window.HIDRAMobilePublic={weather,news,getWeatherCity:()=>localStorage.getItem(WKEY)||'',setWeatherCity:city=>localStorage.setItem(WKEY,String(city||'').trim().slice(0,90))};
 })();
