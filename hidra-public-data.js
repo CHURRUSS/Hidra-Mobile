@@ -17,7 +17,23 @@ async function gdelt(topic){
  if(!Array.isArray(data.articles)||!data.articles.length)throw Error('GDELT sem resultados');
  return data.articles.map(x=>({title:String(x.title||'').replace(/<[^>]*>/g,'').trim(),url:x.url,source:x.domain||'GDELT',date:x.seendate||'',description:''})).filter(x=>x.title&&/^https:\/\//.test(x.url||''));
 }
-async function news(topic='Brasil'){topic=String(topic||'Brasil').trim().slice(0,100)||'Brasil';let lastError;for(const provider of ['gdelt','bing','google'])try{const items=provider==='gdelt'?await gdelt(topic):await rss(provider,topic);if(items.length){const result={items,topic,provider,updated:Date.now(),stale:false};safeWrite(NCACHE,result);return result}}catch(e){lastError=e}
- const old=safeRead(NCACHE);if(old&&old.topic.toLowerCase()===topic.toLowerCase())return {...old,stale:true,error:lastError?.message||'Fonte indisponível'};throw Error('Fontes públicas de notícias indisponíveis. '+(lastError?.message||''))}
+const CATEGORIES={brasil:'brasil',brazil:'brasil',geral:'brasil',noticias:'brasil',notícias:'brasil', 'do dia':'brasil',tecnologia:'tecnologia',tech:'tecnologia',mundo:'mundo',internacional:'mundo',economia:'economia',financas:'economia',finanças:'economia',esporte:'esportes',esportes:'esportes',futebol:'esportes'};
+const normalize=s=>String(s||'').toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+async function news(topic='Brasil'){
+ topic=String(topic||'Brasil').trim().slice(0,100)||'Brasil';
+ const key=CATEGORIES[normalize(topic)]||'brasil';
+ const cacheKey=NCACHE+'.'+key;
+ try{
+  // Arquivo JSON produzido pelo GitHub Actions no mesmo domínio do PWA; sem proxy RSS/CORS.
+  const data=await getJSON('./data/noticias.json?t='+Math.floor(Date.now()/60000));
+  const list=Array.isArray(data.categories?.[key])?data.categories[key]:[];
+  if(!list.length)throw Error('Ainda não há notícias publicadas para esta categoria');
+  let items=list.filter(x=>x&&typeof x.title==='string'&&/^https:\/\//.test(x.url||'')).map(x=>({title:x.title,url:x.url,source:x.source||'RSS',date:x.date||'',description:''}));
+  const specific=!Object.prototype.hasOwnProperty.call(CATEGORIES,normalize(topic));
+  if(specific){const terms=normalize(topic).split(/\s+/).filter(t=>t.length>2);const found=items.filter(x=>terms.some(t=>normalize(x.title).includes(t)));if(found.length)items=found;else throw Error('Não há notícias locais para "'+topic+'". Use Brasil, Tecnologia, Mundo, Economia ou Esportes.');}
+  const result={items:items.slice(0,30),topic,provider:'github',updated:Date.parse(data.updated_at)||Date.now(),stale:false};
+  safeWrite(cacheKey,result);return result;
+ }catch(e){const old=safeRead(cacheKey);if(old)return {...old,stale:true,error:e.message};throw Error('Notícias indisponíveis: '+e.message)}
+}
 window.HIDRAMobilePublic={weather,news,getWeatherCity:()=>localStorage.getItem(WKEY)||'',setWeatherCity:city=>localStorage.setItem(WKEY,String(city||'').trim().slice(0,90))};
 })();

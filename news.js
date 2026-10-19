@@ -48,7 +48,7 @@ async function load(topic){
  try{
  const data=await window.HIDRAMobilePublic.news(topic),items=data.items;
  if(!items.length){state.textContent='Nenhuma notícia encontrada sobre '+topic+'.';return}
- state.textContent=(data.stale?'Notícias salvas em '+new Date(data.updated).toLocaleString('pt-BR')+' (sem atualização): ':items.length+' notícia(s) encontrada(s) — ')+(data.provider==='gdelt'?'GDELT':data.provider==='bing'?'Bing Notícias':'Google Notícias')+'.';
+ state.textContent=(data.stale?'Notícias salvas em '+new Date(data.updated).toLocaleString('pt-BR')+' (sem atualização): ':items.length+' notícia(s) encontrada(s) — ')+(data.provider==='github'?'Fontes RSS via GitHub':data.provider==='gdelt'?'GDELT':data.provider==='bing'?'Bing Notícias':'Google Notícias')+'.';
  items.slice(0,30).forEach(item=>{
  const article=document.createElement('article'),a=document.createElement('a');
  const url=validUrl(item.url||item.link);
@@ -60,7 +60,7 @@ async function load(topic){
  if(item.description||item.summary){const p=document.createElement('p');p.textContent=String(item.description||item.summary);article.appendChild(p)}
  list.appendChild(article);
  });
- }catch(e){state.textContent='Não foi possível consultar notícias: '+(e.name==='AbortError'?'tempo limite':e.message)+'. Verifique sua conexão ou a disponibilidade do serviço RSS.'}
+ }catch(e){state.textContent='Não foi possível consultar notícias: '+(e.name==='AbortError'?'tempo limite':e.message)+'. Verifique se a atualização automática do GitHub está ativa.'}
 }
 $('hidraNewsClose').onclick=close;
 $('hidraNewsForm').onsubmit=e=>{e.preventDefault();load($('hidraNewsQuery').value.trim()||'Brasil')};
