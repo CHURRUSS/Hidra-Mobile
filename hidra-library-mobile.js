@@ -85,34 +85,101 @@ if(form && !document.getElementById('hlComposerAttach')){
  function renderPending(){chip.hidden=!pendingFile;if(pendingFile)name.textContent='📎 '+pendingFile.name}
  remove.onclick=()=>{pendingFile=null;picker.value='';renderPending()};
  picker.onchange=()=>{const file=picker.files[0];if(!file)return;if(file.size>8*1024*1024){alert('O arquivo deve ter até 8 MB.');picker.value='';return}pendingFile=file;renderPending()};
- const originalFormSubmit=e=>{if(!pendingFile && !(lastFile&&/^\s*(?:hidra[, ]*)?(?:agora|nesse|neste|no mesmo|na versão|corrija novamente|melhore|ajuste|modifique).*\b(?:arquivo|código|codigo|versão|versao|função|funcao)\b/i.test($('message').value)))return;
-   e.preventDefault();e.stopImmediatePropagation();if(busy)return;
-   const instruction=$('message').value.trim();if(!instruction){status('Escreva o que a HIDRA deve fazer com o arquivo.');return}
-   const f=pendingFile;const followup=!f&&lastFile;const fileName=f?f.name:lastFile.name;
-   const history=$('history');const user=document.createElement('div');user.className='bubble user';user.textContent=(f?'📎 '+fileName+'\n':'')+instruction;
-   history?.appendChild(user);if(history)history.scrollTop=history.scrollHeight;
+ // Mostra o andamento ao lado do campo de mensagem; nao esconde falhas na Biblioteca.
+ const transferStatus=document.createElement('div');
+ transferStatus.id='hlChatTransferStatus';transferStatus.hidden=true;
+ transferStatus.setAttribute('role','status');transferStatus.setAttribute('aria-live','polite');
+ transferStatus.style.cssText='box-sizing:border-box;width:100%;margin:4px 0 9px;padding:9px 11px;border:1px solid #398ba7;border-radius:9px;background:#09283b;color:#b4edfb;font:12px/1.45 Arial,sans-serif;overflow-wrap:anywhere';
+ form.parentElement.insertBefore(transferStatus,form);
+ function progress(message,isError=false){
+   transferStatus.hidden=false;transferStatus.textContent=message;
+   transferStatus.style.borderColor=isError?'#df7777':'#398ba7';
+   transferStatus.style.color=isError?'#ffd3d3':'#b4edfb';
+ }
+ function chatMessage(message,who='hidra'){
+   const history=$('history');if(!history)return null;
+   const el=document.createElement('div');el.className='bubble '+who;el.textContent=message;
+   history.appendChild(el);history.scrollTop=history.scrollHeight;
    document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id==='conversation'));
    document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.tab==='conversation'));
-   $('message').value='';pendingFile=null;picker.value='';renderPending();
-   action(async()=>{
-     let info=lastFile;
-     if(f){const arr=new Uint8Array(await f.arrayBuffer());const uploaded=await(await req('upload',{name:f.name,data:b64(arr)})).json();info=uploaded.file;lastFile=info}
-     if(!info?.id)throw Error('O servidor não retornou o identificador do arquivo.');
-     const wantsEdit=/\b(corrig|consert|modifi|alter|edit|reescrev|melhor|ajust|refator|devolv|gere|crie|atualiz)/i.test(instruction);
-     const operation=wantsEdit?'edit':'analyze';
-     const result=await(await req(operation,{id:info.id,instruction})).json();
-     if(wantsEdit){if(!result.file?.id)throw Error('O servidor não retornou uma versão corrigida.');lastFile=result.file;
-       const bubble=document.createElement('div');bubble.className='bubble hidra';
-       const text=document.createElement('div');text.textContent='HIDRA · Arquivo corrigido: '+result.file.name+'\n'+(result.message||'Versão salva na Biblioteca.');
-       const download=document.createElement('button');download.type='button';download.textContent='⬇ Baixar '+result.file.name;
-       download.style.cssText='margin-top:9px;padding:9px 12px;border:1px solid #4ba4c4;border-radius:8px;background:#104258;color:#dffaff';
-       download.onclick=()=>action(async()=>{const response=await req('download?id='+encodeURIComponent(result.file.id));const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=result.file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)});
-       bubble.append(text,download);history?.appendChild(bubble);
-     }else{sendToChat(result.analysis||'A análise não retornou texto.',info.name)}
-     if(history)history.scrollTop=history.scrollHeight;
-   });
+   return el;
+ }
+ function reportError(err,operation){
+   let message=err?.name==='AbortError'?'Tempo limite de conexão com o servidor.':(err?.message||String(err));
+   if(operation==='edit'&&/(?:a[cç][aã]o desconhecida|HTTP 404|rota n[aã]o encontrada)/i.test(message))
+     message='O servidor Python não reconhece a rota de correção de arquivos (/mobile/api/library/edit). É necessário atualizar hidra_mobile_bridge.py no PC.';
+   return String(message).slice(0,380);
+ }
+ const originalFormSubmit=e=>{
+   const message=$('message');
+   const instruction=message.value.trim();
+   // Reutilize o ultimo arquivo somente quando a mensagem se referir explicitamente a ele.
+   const followup=!pendingFile&&!!lastFile&&
+     /(?:\barquivo\b|\bc[oó]digo\b|\bvers[aã]o\b|\bfun[cç][aã]o\b)/i.test(instruction)&&
+     /(?:corrig|corrij|consert|modifi|alter|edit|reescrev|melhor|ajust|refator|devolv|analis|analise|verifi|mostr|explic)/i.test(instruction);
+   if(!pendingFile&&!followup)return;
+   e.preventDefault();e.stopImmediatePropagation();
+   if(busy){progress('Aguarde: ainda estou processando o arquivo anterior.');return}
+   if(!instruction){progress('Escreva o que a HIDRA deve fazer com o arquivo.',true);return}
+   const selectedFile=pendingFile;
+   const filename=selectedFile?selectedFile.name:lastFile.name;
+   const wantsEdit=/(?:corrig|corrij|consert|modifi|alter|edit|reescrev|melhor|ajust|refator|devolv|gere|crie|atualiz)/i.test(instruction);
+   const operation=wantsEdit?'edit':'analyze';
+   (async()=>{
+     lock(true);
+     try{
+       config(); // verificar HTTPS e pareamento antes de registrar a solicitacao
+       chatMessage('📎 '+filename+'\n'+instruction,'me');
+       let info=lastFile;
+       if(selectedFile){
+         progress('Enviando '+filename+' para a Biblioteca da HIDRA...');
+         const bytes=new Uint8Array(await selectedFile.arrayBuffer());
+         const uploaded=await(await req('upload',{name:selectedFile.name,data:b64(bytes)})).json();
+         info=uploaded.file;
+         if(!info?.id)throw Error('O servidor não confirmou o recebimento do arquivo.');
+         lastFile=info;
+         pendingFile=null;picker.value='';renderPending();
+       }
+       if(!info?.id)throw Error('O servidor não retornou o identificador do arquivo.');
+       progress(operation==='edit'?'Arquivo recebido. A HIDRA está corrigindo o código...':'Arquivo recebido. A HIDRA está analisando...');
+       const result=await(await req(operation,{id:info.id,instruction})).json();
+       if(operation==='edit'){
+         if(!result.file?.id)throw Error('O servidor não retornou uma versao corrigida.');
+         lastFile=result.file;
+         const bubble=chatMessage('HIDRA · Arquivo corrigido: '+result.file.name+'\n'+(result.message||'Versão salva na Biblioteca.'),'hidra');
+         if(bubble){
+           const download=document.createElement('button');download.type='button';download.textContent='⬇ Baixar '+result.file.name;
+           download.style.cssText='display:block;margin-top:9px;padding:9px 12px;border:1px solid #4ba4c4;border-radius:8px;background:#104258;color:#dffaff;cursor:pointer';
+           download.onclick=async()=>{
+             if(busy)return;
+             lock(true);
+             try{
+               progress('Preparando download de '+result.file.name+'...');
+               const response=await req('download?id='+encodeURIComponent(result.file.id));
+               const blob=await response.blob();const url=URL.createObjectURL(blob);
+               const a=document.createElement('a');a.href=url;a.download=result.file.name;document.body.appendChild(a);a.click();a.remove();
+               setTimeout(()=>URL.revokeObjectURL(url),30000);
+               progress('Download solicitado: '+result.file.name+'.');
+             }catch(err){const msg=reportError(err,'download');progress('Falha no download: '+msg,true);chatMessage('HIDRA · Não consegui baixar o arquivo: '+msg,'hidra')}
+             finally{lock(false)}
+           };
+           bubble.appendChild(download);
+         }
+         progress('Correção concluída. Use o botao Baixar acima.');
+       }else{
+         sendToChat(result.analysis||'A análise não retornou texto.',info.name);
+         progress('Análise concluída. Resultado enviado para Conversas.');
+       }
+       message.value='';
+     }catch(err){
+       const reason=reportError(err,operation);
+       progress('Falha ao processar '+filename+': '+reason,true);
+       status('Falha no envio pelo chat: '+reason);
+       chatMessage('HIDRA · Não consegui processar '+filename+'.\nMotivo: '+reason,'hidra');
+       // Não limpa o campo de texto no erro: o usuario pode corrigir e tentar novamente.
+     }finally{lock(false)}
+   })();
  };
- // Capture phase intercepts only messages involving a file. Ordinary chat stays untouched.
  form.addEventListener('submit',originalFormSubmit,true);
  // Keep send button working even if other scripts call submit programmatically.
 }
