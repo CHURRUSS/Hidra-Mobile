@@ -65,5 +65,16 @@ $('hlAiEdit').onclick=()=>action(async()=>{
 $('hlEdit').onclick=()=>action(async()=>{const f=chosen();const v=await(await req('preview?id='+encodeURIComponent(f.id))).json();if(!['.txt','.md','.py','.js','.json','.html','.css','.xml','.csv','.bat','.ini','.log','.yaml','.yml','.sql'].includes(f.ext))throw Error('Edição de cópia disponível apenas para arquivos de texto/código.');const edited=prompt('Editar uma cópia de '+f.name+' (o original não será alterado):',v.text);if(edited===null)return;await req('version',{id:f.id,text:edited});await refresh();status('Nova versão criada; original preservado.');});
 $('hlDownload').onclick=()=>action(async()=>{const f=chosen();const r=await req('download?id='+encodeURIComponent(f.id));const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=f.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status('Download iniciado: '+f.name)});
 const tile=document.createElement('button');tile.type='button';tile.className='module';tile.id='libraryTile';tile.innerHTML='<span class="symbol">▧</span><span>Biblioteca</span>';tile.onclick=()=>{panel.hidden=false;$('hlOutput').hidden=true;refresh()};document.querySelector('.modules')?.appendChild(tile);
+// Entrada permanente no terminal, além do módulo na tela inicial.
+const form=document.getElementById('sendform');
+if(form && !document.getElementById('hlComposerAttach')){
+ const attach=document.createElement('button');
+ attach.type='button';attach.id='hlComposerAttach';attach.textContent='＋';
+ attach.setAttribute('aria-label','Anexar arquivo pela Biblioteca');
+ attach.title='Anexar arquivo / Biblioteca';
+ attach.style.cssText='flex:0 0 42px;min-width:42px;height:42px;border:1px solid #398ba7;border-radius:10px;background:#10394e;color:#d5f8ff;font-size:26px;line-height:1;cursor:pointer;';
+ attach.addEventListener('click',()=>{panel.hidden=false;$('hlOutput').hidden=true;refresh();});
+ form.insertBefore(attach,form.firstChild);
+}
 window.HIDRALibraryMobile={open:()=>tile.click(),refresh};
 })();
