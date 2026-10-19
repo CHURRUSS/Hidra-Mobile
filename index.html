@@ -1,1 +1,60 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#071722"><meta name="description" content="Terminal móvel da HIDRA 2.0"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"><title>HIDRA Mobile</title></head><body><main><header><span class="brand">HIDRA <small>MOBILE</small></span><span id="connection" class="status">DESCONECTADA</span></header><section class="orb"><div class="ring ring1"></div><div class="ring ring2"></div><div class="center">H</div></section><p id="hint">Configure a conexão para começar.</p><div id="history" class="history" aria-live="polite"></div><form id="sendform"><input id="message" maxlength="400" placeholder="Digite ou use o microfone" aria-label="Mensagem"><button type="submit" class="send">➤</button></form><button id="talk" class="talk">🎙 FALAR COM HIDRA</button><button id="settingsBtn" class="settings">⚙ Configurar conexão</button><section id="settings" class="settingsPanel" hidden><label>Endereço do servidor HTTPS<input id="endpoint" placeholder="https://seu-pc.sua-rede.ts.net"></label><label>Chave de pareamento<input id="token" type="password" placeholder="Chave exibida no PC"></label><button id="save" type="button">Salvar e conectar</button><p class="tip">Com Tailscale Serve, use a URL HTTPS do seu PC. O GitHub Pages hospeda somente esta interface. Nunca publique a chave no repositório.</p></section></main><script src="app.js" defer></script><script src="hidra-library-mobile.js?v=4" defer></script></body></html>
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#061522"><meta name="description" content="Terminal holográfico HIDRA Mobile">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="logo-desktop.png" type="image/png">
+<link rel="stylesheet" href="style.css?v=11"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<title>HIDRA Mobile 2.7 — Rede Neural sem Zoom</title></head>
+<body><main class="app">
+<header class="top"><div><div class="desktop-brand"><img src="logo-desktop.png" class="desktop-logo" alt="Logo original HIDRA Desktop"><div><div class="brand">HIDRA <small>2.0</small></div><div class="subbrand">ASSISTENTE INTELIGENTE</div></div></div></div><span id="connection" class="status">DESCONECTADA</span></header>
+<section class="hero" aria-label="Núcleo da HIDRA">
+<div class="hero-top"><span><i class="led"></i> SISTEMA OPERACIONAL</span><span class="hero-id">HIDRA / CORE_02</span></div>
+<div class="neural-core" role="img" aria-label="Núcleo de rede neural da HIDRA com H central, nós e conexões animadas">
+<canvas id="neuralCanvas" aria-hidden="true"></canvas>
+<div class="neural-h" aria-hidden="true">H</div>
+<div class="neural-crosshair neural-crosshair-x" aria-hidden="true"></div>
+<div class="neural-crosshair neural-crosshair-y" aria-hidden="true"></div>
+</div>
+<div id="hint" class="hint">Configure a conexão para começar.</div><div class="hero-sub">NÚCLEO DE COMUNICAÇÃO ATIVO</div></section>
+<section id="home" class="screen active">
+<div class="section-title"><span>MÓDULOS DA HIDRA</span><span class="section-index">10 DISPONÍVEIS</span></div>
+<div class="modules"><button class="module" id="gpsTile" type="button"><span class="symbol">⌖</span><span>Localização</span></button>
+<button class="module" data-command="HIDRA, abra o laboratório científico"><span class="symbol">⚗</span><span>Científico</span></button>
+<button class="module" data-command="HIDRA, abra o laboratório atômico"><span class="symbol">⚛</span><span>Atômico</span></button>
+<button class="module" data-command="HIDRA, simule o Sistema Solar"><span class="symbol">◎</span><span>Espacial</span></button>
+<button class="module" data-command="HIDRA, mostre o estado do sistema"><span class="symbol">▣</span><span>Sistema</span></button>
+<button class="module" data-command="HIDRA, abra notícias"><span class="symbol">▤</span><span>Notícias</span></button>
+<button class="module" id="remindersTile" type="button"><span class="symbol">◷</span><span>Lembretes</span></button>
+<button class="module" id="visionTile" type="button"><span class="symbol">◉</span><span>Visão</span></button>
+<button class="module" id="settingsTile"><span class="symbol">⚙</span><span>Ajustes</span></button>
+</div>
+<div class="info"><span class="info-mark">◈</span> MÓDULOS CONECTADOS AO NÚCLEO DESKTOP</div>
+</section>
+<section id="conversation" class="screen">
+<div class="section-title">CONVERSAS</div><div id="history" class="history" aria-live="polite"></div>
+</section>
+<section id="controls" class="screen"><div class="section-title">CONTROLES</div>
+<button class="wide-action" data-command="HIDRA, que horas são?">◷ &nbsp; Consultar horário</button>
+<button class="wide-action" data-command="HIDRA, pode descansar">☾ &nbsp; Encerrar conversa</button>
+<button class="wide-action" data-command="HIDRA, abra notícias">▤ &nbsp; Consultar notícias</button>
+</section>
+<section class="terminal"><div class="section-title"><span>TERMINAL DE COMANDOS</span><span class="section-index">▣</span></div>
+<form id="sendform"><input id="message" maxlength="400" autocomplete="off" placeholder="Digite ou fale com a HIDRA..." aria-label="Mensagem"><button type="submit" class="send" aria-label="Enviar mensagem">➤</button></form>
+<button id="talk" class="talk"><span class="mic-glyph">◉</span> ATIVAR MICROFONE</button></section>
+<nav class="bottom" aria-label="Navegação"><button class="nav active" data-tab="home">⌂<small>Início</small></button><button class="nav" data-tab="conversation">◌<small>Conversas</small></button><button class="nav" data-tab="controls">☷<small>Controles</small></button></nav>
+<section id="settings" class="settingsPanel" hidden><div class="panel-top"><strong>CONEXÃO COM A HIDRA</strong><button id="closeSettings" aria-label="Fechar">✕</button></div>
+<label>Endereço HTTPS do servidor<input id="endpoint" placeholder="https://seu-pc.sua-rede.ts.net" inputmode="url"></label>
+<label>Chave de pareamento<input id="token" type="password" placeholder="Chave exibida no PC"></label>
+<button id="save" type="button">Salvar e conectar</button>
+<p class="tip">O GitHub Pages hospeda somente a interface. Para acessar a HIDRA do PC, configure um servidor HTTPS compatível com a API Mobile. Nunca publique sua chave no repositório.</p></section>
+<section id="gpsPanel" class="gps-panel" hidden aria-label="Mapa holográfico da HIDRA">
+<div class="gps-head"><div><span class="gps-kicker">HIDRA / GEO_INTELLIGENCE</span><h2>LOCALIZAÇÃO</h2></div><button id="gpsClose" class="gps-close" aria-label="Fechar mapa">✕</button></div>
+<div id="gpsStatus" class="gps-status" role="status">Aguardando localização…</div>
+<div class="gps-map-shell"><div id="gpsMap" class="gps-map" aria-label="Mapa de localização"></div><div class="gps-grid" aria-hidden="true"></div><div class="gps-corners" aria-hidden="true"></div><span class="gps-tag">◈ GEO / LIVE</span></div>
+<div class="gps-address"><span class="gps-kicker">POSIÇÃO ATUAL</span><div id="gpsAddress">Solicite sua localização para começar.</div><small id="gpsCoords"></small></div>
+<div class="gps-actions"><button type="button" id="gpsRefresh">⌖ Minha localização</button><button type="button" id="gpsCopy">⧉ Copiar endereço</button></div>
+<div class="gps-categories"><span class="gps-kicker">BUSCAR NAS PROXIMIDADES</span><div class="gps-chips">
+<button type="button" data-place="market">Mercados</button><button type="button" data-place="pharmacy">Farmácias</button><button type="button" data-place="bakery">Padarias</button><button type="button" data-place="fuel">Postos</button><button type="button" data-place="restaurant">Restaurantes</button></div></div>
+<div id="gpsResults" class="gps-results" aria-live="polite"></div>
+<div class="gps-foot">Localização aproximada. Mapas e estabelecimentos exigem internet; o GPS pode funcionar sem o Desktop. Dados © OpenStreetMap.</div>
+</section>
+</main><script src="app.js?v=11" defer></script><script src="neural-core.js?v=11" defer></script><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script><script src="gps.js?v=11" defer></script><script src="lembretes.js?v=2" defer></script><script src="vision.js?v=1" defer></script><script src="hidra-library-mobile.js?v=5" defer></script><script src="hidra-chat-history-mobile.js?v=1" defer></script><script src="hidra-code-blocks.js?v=1" defer></script></body></html>
