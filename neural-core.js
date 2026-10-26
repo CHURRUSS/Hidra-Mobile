@@ -111,17 +111,53 @@ function similarity(a,b){const aa=norm(a),bb=norm(b);if(!aa||!bb)return 0;if(aa=
 function duplicate(q){return db.questions.some(x=>similarity(x.text,q)>=.75)}
 function field(text,label){const re=new RegExp('(?:^|\\n)\\s*'+label+'\\s*:\\s*([^\\n]+)','i');const m=String(text).match(re);return clean(m?m[1]:'',400)}
 function parseQuestion(raw){let question=field(raw,'PERGUNTA');if(!question){question=clean(String(raw).split('\n')[0],220)}question=question.replace(/\s+(TIPO|MOTIVO|JÁ PERGUNTARAM|JA PERGUNTARAM|RESPOSTA):.*$/i,'').replace(/^(?:\d+[.)]\s*)/,'').slice(0,200).trim();const kind=norm(field(raw,'TIPO'));return {question,needsHuman:/usuario|humano|criador/.test(kind),rawType:kind}}
-function qPrompt(style,seed,attempt){const last=db.questions.slice(-5).map(q=>q.text).join(' | ').slice(0,260);const facts=db.memory.filter(m=>m.source==='usuario').slice(-3).map(m=>m.question+': '+m.answer).join(' | ').slice(0,200);const directives={CONTEXTO:'Aprofunde o mesmo assunto.',ASSOCIACAO:'Relacione o assunto com outra área útil.',LIVRE:'Escolha um assunto novo e diferente.'};return `Você é HIDRA. Gere UMA pergunta nova, útil e investigável. ${directives[style]} Assunto atual: ${seed.slice(0,180)}. Fatos confirmados: ${facts||'nenhum'}. Não repita: ${last||'nenhuma'}. ${attempt?'A anterior foi repetida. Mude a pergunta.':''} Só responda em 3 linhas: PERGUNTA: ...\nTIPO: MODELO ou USUARIO\nMOTIVO: ...`.slice(0,MAX_MSG)}
+/* A curiosidade não recebe textos inteiros das perguntas antigas: enviá-los repetidamente
+   à API compartilhada fazia o Ollama continuar falando de medicina até após mudança de tema.
+   O filtro a seguir controla também o assunto GERADO, e não só a instrução do prompt. */
+const AREAS={
+ saude:{re:/saude|medic|hospital|pacient|diagnostic|tratament|exame|laboratori|doenc|clinica|terapia|farmac|enferm|cirurg|patolog|nutric|biomed/,name:'saúde e medicina'},
+ robotica:{re:/robot|corpo fisico|sensor|camera|atuador|mecanico|mecanica|protes|visao computacional|movimento fisico|exoesqueleto|armadura|homem de ferro/,name:'robótica e percepção'},
+ identidade:{re:/jarvis|tony stark|criad|criei|criador|origem da hidra|quem sou|identidade|personalidade|assistente virtual|conversar|conversa|memoria da hidra|voz da hidra/,name:'identidade e assistentes digitais'},
+ educacao:{re:/educa|ensino|escola|aprendizagem|aluno|professor|pedagog/,name:'educação'},
+ artes:{re:/arte|musica|cinema|filme|literatura|desenho|pintura|criatividade/,name:'arte e cultura'},
+ ambiente:{re:/natureza|ambient|clima|ecologia|animal|plantas|florest|sustentab/,name:'natureza e meio ambiente'},
+ tecnologia:{re:/software|codigo|programa|sistema|computador|tecnolog|internet|seguranca digital|hardware|nanotecnolog|nano tecnolog|nanomaterial|materiais avancados/,name:'tecnologia'},
+ ciencia:{re:/astronomi|espaco|universo|fisica|quimica|matematic|cientific/,name:'ciência'},
+ historia:{re:/historia|historico|antiguidade|civilizac|revolucao|passado/,name:'história'},
+ cotidiano:{re:/rotina|viagem|trabalho|casa|transporte|cidade|economia|comida|esporte/,name:'cotidiano'}
+};
+function areaOf(s){const n=norm(s);for(const [id,a] of Object.entries(AREAS))if(a.re.test(n))return id;return 'geral'}
+function isContinuation(s){const n=norm(s);return !n||n.length<9||/^(sim|nao|ok|certo|claro|gostaria|gostaria sim|quero|pode ser|pode|isso|entendi|beleza|vamos|com certeza|obrigado|obrigada|bom dia|boa tarde|boa noite)[!. ]*$/.test(n)}
+function activeSeed(){if(!isContinuation(db.lastTopic))return clean(db.lastTopic,190);
+ const recent=db.events.slice(-42).reverse().find(e=>e.type==='start'&&e.subject&&!isContinuation(e.subject));
+ return clean(recent?.subject||'Quem é a HIDRA e quais capacidades ela pode desenvolver?',190)}
+function saturatedAreas(){const a=db.questions.slice(-8).map(q=>areaOf(q.text)),counts={};for(const k of a)if(k!=='geral')counts[k]=(counts[k]||0)+1;return Object.keys(counts).filter(k=>counts[k]>=3)}
+function questionAllowed(q,style,seed){if(duplicate(q))return 'repetida';const area=areaOf(q),focus=areaOf(seed);
+ // O usuário tem prioridade para falar de qualquer assunto, até de um tema já explorado.
+ if(area!=='geral'&&saturatedAreas().includes(area)&&focus!==area)return 'área repetida em excesso';
+ if(focus!=='geral'&&style==='CONTEXTO'&&area!=='geral'&&area!==focus)return 'fugiu do contexto';
+ if(focus!=='geral'&&style==='ASSOCIACAO'&&area===focus)return 'não mudou de área na associação';
+ if(focus!=='geral'&&style==='LIVRE'&&area===focus)return 'assunto livre não variou';
+ return '';
+}
+function qPrompt(style,seed,attempt,reason=''){
+ const focus=areaOf(seed),label=AREAS[focus]?.name||'conversa e interesses gerais';
+ const blocked=saturatedAreas().filter(k=>k!==focus).map(k=>AREAS[k].name).join(', ');
+ const facts=db.memory.filter(m=>m.source==='usuario').slice(-2).map(m=>m.question+': '+m.answer).join(' | ').slice(0,130);
+ const directives={CONTEXTO:'Aprofunde SOMENTE o assunto mais recente do usuário.',ASSOCIACAO:'Explore uma área DIFERENTE, explicando uma relação plausível com o tema.',LIVRE:'Explore um assunto novo, independente da conversa.'};
+ const instruction=style==='CONTEXTO'&&focus==='identidade'?'Exemplos de focos: origem, voz, personalidade, interação e funcionalidades da HIDRA.':'';
+ return `HIDRA, produza UMA dúvida original. ${directives[style]} Tema da conversa: ${seed.slice(0,150)}. Área atual: ${label}. ${instruction} ${blocked?'Áreas já muito exploradas, evitar agora: '+blocked+'.':''} ${facts?'Fatos confirmados: '+facts+'.':''} ${attempt?'A proposta anterior foi recusada ('+reason+'). MUDE de verdade a pergunta e siga a área solicitada.':''} Não repita ideias de perguntas antigas. Só responda em 3 linhas: PERGUNTA: ...\nTIPO: MODELO ou USUARIO\nMOTIVO: ...`.slice(0,MAX_MSG)
+}
 function aPrompt(question){const facts=db.memory.filter(m=>m.source==='usuario').slice(-5).map(m=>m.question+': '+m.answer).join(' | ').slice(0,320);return `HIDRA: investigue esta pergunta com seu conhecimento. Não invente fatos nem acesso à internet. Diferencie hipótese de fato e descreva limitações. Pergunta: ${question.slice(0,200)}. Fatos que o usuário confirmou: ${facts||'nenhum'}. Responda em até 350 caracteres, neste formato: RESPOSTA: ...\nLIMITE: ...\nNOVA_DUVIDA: ...`.slice(0,MAX_MSG)}
 function chooseStyle(i){const n=Math.random();return n<.60?'CONTEXTO':n<.90?'ASSOCIACAO':'LIVRE'}
-function topicSeed(){return clean(db.lastTopic||db.questions.slice(-1)[0]?.text||'Quem sou, o que sei e quais são minhas limitações?',190)}
+function topicSeed(){return activeSeed()}
 function enqueue(seed,response){db.queue={seed:clean(seed||topicSeed(),240),response:clean(response,320),created:date()};persist();tx('afQueue',`Investigação pendente: ${db.queue.seed}`)}
 function clearQueue(){db.queue=null;persist();tx('afQueue','Nenhuma investigação pendente.')}
 async function start(seed,auto){if(running||db.pending)return;if(!navigator.onLine){enqueue(seed,'');setPhase('aguardando','Sem internet. Investigação salva para quando o servidor estiver disponível.');return}if(document.hidden){enqueue(seed,'');return}const conn=modeAccess();if(conn.error){enqueue(seed,'');notify(conn.error);setPhase('aguardando','Aguardando configuração do servidor.');return}
  running=true;const me=++token;let subject=clean(seed||topicSeed(),240);clearQueue();setPhase('perguntando','Formulando uma dúvida...');event('start','Início de investigação '+(auto?'automática':'manual'),{subject});const cycles=Number(db.cycles)||1;
  try{for(let i=0;i<cycles;i++){if(me!==token)break;if(document.hidden){enqueue(subject,'');setPhase('aguardando','Página em segundo plano. Continuaremos quando você abrir a Hidra.');break}
-  const style=chooseStyle(i);let question=null;for(let attempt=0;attempt<2;attempt++){const raw=await post(qPrompt(style,subject,attempt));if(!raw)throw Error('O servidor retornou uma pergunta vazia.');const candidate=parseQuestion(raw);if(candidate.question.length>12&&!duplicate(candidate.question)&&!/(MOTIVO:|TIPO:|JÁ PERGUNTARAM)/i.test(candidate.question)){question=candidate;break}event('repetição','Pergunta repetida ou malformada descartada.');}
-  if(!question){event('skip','Não consegui gerar uma pergunta realmente nova após duas tentativas.');notify('A Hidra tentou evitar uma pergunta repetida e encerrou o ciclo.');break}
+  const style=chooseStyle(i);let question=null,reason='';for(let attempt=0;attempt<3;attempt++){const raw=await post(qPrompt(style,subject,attempt,reason));if(!raw)throw Error('O servidor retornou uma pergunta vazia.');const candidate=parseQuestion(raw);reason=candidate.question.length<=12||/(MOTIVO:|TIPO:|JÁ PERGUNTARAM)/i.test(candidate.question)?'formato inválido':questionAllowed(candidate.question,style,subject);if(!reason){question=candidate;break}event('rejeitada','Dúvida descartada: '+reason+' (área: '+(AREAS[areaOf(candidate.question)]?.name||'geral')+').');}
+  if(!question){event('skip','Não consegui gerar pergunta com diversidade e contexto após três tentativas.');notify('A Hidra evitou insistir em um tema saturado; tente outra conversa ou use Investigar agora.');break}
   db.questions.push({text:question.question,type:style,created:date()});persist();renderCounters();tx('afCurrent',question.question);event('pergunta',question.question,{style});
   if(question.needsHuman){db.pending={question:question.question,created:date()};persist();renderPending();event('humano','Hidra aguarda confirmação do criador.');notify('A Hidra precisa de uma informação sua. Responda na seção ENSINAR.');break}
   setPhase('investigando','Consultando o modelo para investigar...');const raw=await post(aPrompt(question.question));if(!raw)throw Error('O servidor retornou uma investigação vazia.');const answer=field(raw,'RESPOSTA')||clean(raw.split('\n')[0],500);const limit=field(raw,'LIMITE')||'Sem verificação por fontes externas.';const next=field(raw,'NOVA_DUVIDA');memory('hipotese',question.question,answer);event('hipótese',question.question+' — '+answer,{limit,next});notify('Hipótese registrada (não verificada): '+answer+' Limitação: '+limit);renderCounters();subject=next||question.question;
@@ -156,7 +192,7 @@ function init(){if(!$('neuralCanvas')||$('hidraAutoformaPanel'))return;
  <div class="af-box"><h3>CONTROLES DE CURIOSIDADE</h3>
  <label><input type="checkbox" id="afEnable">Investigar automaticamente após minhas conversas</label>
  <label>Rodadas por conversa <select id="afCycles"><option value="1">1 rodada</option><option value="2">2 rodadas</option><option value="3">3 rodadas</option></select></label>
- <p>Prioridade inicial: 60% aprofundar assunto; 30% temas associados; 10% assunto livre. Perguntas repetidas são descartadas.</p>
+ <p>Prioridade inicial: 60% aprofundar assunto; 30% temas associados; 10% assunto livre. Agora a Autoforma também rejeita perguntas que fogem do contexto ou insistem em temas saturados.</p>
  <label><input type="checkbox" id="afShared">Permitir API COMPARTILHADA (compatibilidade)</label>
  <p class="af-warning">Sem essa opção, exige que seu servidor tenha a rota isolada /mobile/api/autoforma/chat. Se ativar compatibilidade, cada pergunta e investigação poderá entrar no histórico normal da HIDRA e afetar respostas posteriores. Não é uma memória isolada no servidor.</p>
  <div class="af-actions"><button class="af-primary" id="afRun">Investigar agora</button><button class="af-danger" id="afStop" disabled>Interromper</button><button id="afResume">Retomar pendência</button></div></div>
@@ -188,6 +224,6 @@ function init(){if(!$('neuralCanvas')||$('hidraAutoformaPanel'))return;
  document.addEventListener('visibilitychange',()=>{if(document.hidden){if(running){enqueue(topicSeed(),'');stop()}}else tryResume()});
 }
 function watchChat(){if(observing)return;const history=$('history');if(!history)return;observing=true;let count=history.querySelectorAll('.bubble').length;new MutationObserver(()=>{const all=history.querySelectorAll('.bubble');if(all.length<count){count=all.length;return}for(let i=count;i<all.length;i++){const b=all[i],content=clean(b.textContent,700);if(b.classList.contains('me')){lastUser=content;if(db.pending&&content)tx('afSuggested','Você respondeu no chat: '+content+'. Confirme essa informação acima se desejar guardá-la.');}
- else if(b.classList.contains('hidra')&&lastUser&&!content.startsWith('Não consegui completar:')){db.lastTopic=lastUser;db.lastResponse=content;persist();if(db.enabled&&!db.pending){const next=lastUser;clearTimeout(waitTimer);waitTimer=setTimeout(()=>{if(!running){enqueue(next,content);start(next,true)}},1200)}}}count=all.length}).observe(history,{childList:true});}
+ else if(b.classList.contains('hidra')&&lastUser&&!content.startsWith('Não consegui completar:')){if(!isContinuation(lastUser))db.lastTopic=lastUser;db.lastResponse=content;persist();if(db.enabled&&!db.pending){const next=topicSeed();clearTimeout(waitTimer);waitTimer=setTimeout(()=>{if(!running){enqueue(next,content);start(next,true)}},1200)}}}count=all.length}).observe(history,{childList:true});}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
